@@ -1,8 +1,4 @@
 import streamlit as st
-st.title('왕긴급')
-st.write('왕 긴급 상황이신가요?')
-
-import streamlit as st
 import google.generativeai as genai
 
 # -----------------------------------------------------------------------------
@@ -205,4 +201,8 @@ if st.button("🚨 AI 긴급 행동지침 보기", type="primary"):
                 response = model.generate_content(prompt)
                 
                 st.markdown("<div class='emergency-card'>", unsafe_allow_html=True)
-                st.markdown("####
+                st.markdown("#### 🚨 왕긴급 AI 실시간 지침")
+                st.write(response.text)
+                st.markdown("</div>", unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {str(e)}")
