@@ -1,209 +1,126 @@
 
 import streamlit as st
-import streamlit.components.v1 as components
-from streamlit_webrtc import (
-    webrtc_streamer,
-    VideoProcessorBase,
-    WebRtcMode,
-)
-from ultralytics import YOLO
-import av
-import cv2
-import threading
-import time
-import io
-import wave
-import math
-import struct
+import requests
+import pandas as pd
+from streamlit_geolocation import streamlit_geolocation
 
-# ----------------------------
-# 1. 페이지 설정
-# ----------------------------
 st.set_page_config(
-    page_title="AI 안전 감지",
-    page_icon="🚨",
-    layout="wide"
+    page_title="안전 동행",
+    page_icon="🚶",
+    layout="centered",
 )
 
-st.title("🚨 AI 주변 위험 감지 시스템")
-st.write(
-    "카메라 영상에서 지정한 물체를 감지하고 "
-    "주의가 필요한 대상이 발견되면 경고합니다."
-)
+st.title("🚶 안전 동행")
+st.header("어르신 보행 안전 도우미")
 
-# ----------------------------
-# 2. AI 모델 불러오기
-# ----------------------------
-@st.cache_resource
-def load_model():
-    return YOLO("yolov8n.pt")
-
-with st.spinner("AI 모델을 불러오는 중..."):
-    model = load_model()
-
-# ----------------------------
-# 3. 경고 대상 설정
-# ----------------------------
-OBJECTS = {
-    "person": "사람",
-    "bicycle": "자전거",
-    "car": "자동차",
-    "motorcycle": "오토바이",
-    "bus": "버스",
-    "truck": "트럭",
+st.markdown("""
+<style>
+html, body, [class*="css"] {
+    font-size: 20px;
 }
-
-st.subheader("감지할 대상 선택")
-
-selected_objects = st.multiselect(
-    "선택한 물체가 발견되면 경고합니다.",
-    options=list(OBJECTS.keys()),
-    default=["bicycle", "car", "motorcycle", "truck"],
-    format_func=lambda x: OBJECTS[x]
-)
-
-confidence = st.slider(
-    "AI 감지 신뢰도 기준",
-    min_value=0.1,
-    max_value=0.9,
-    value=0.4,
-    step=0.1
-)
-
-# ----------------------------
-# 4. 실시간 감지 결과 공유
-# ----------------------------
-result_lock = threading.Lock()
-
-detection_state = {
-    "objects": [],
-    "last_detection": 0.0,
+.stButton button {
+    min-height: 60px;
+    font-size: 22px;
+    font-weight: bold;
 }
+</style>
+""", unsafe_allow_html=True)
 
-# ----------------------------
-# 5. 카메라 영상 분석
-# ----------------------------
-class SafetyDetector(VideoProcessorBase):
-    def __init__(self):
-        self.last_run = 0.0
+st.warning(
+    "이 앱은 지도에 등록된 보행 주의 정보를 검색합니다. "
+    "눈앞의 장애물이나 다가오는 자동차를 직접 감지하지는 않습니다."
+)
 
-    def recv(self, frame):
-        image = frame.to_ndarray(format="bgr24")
+st.subheader("📍 현재 위치")
 
-        # 너무 잦은 추론을 줄여 처리 부담 완화
-        now = time.time()
+location = streamlit_geolocation()
 
-        if now - self.last_run >= 0.25:
-            self.last_run = now
+if not isinstance(location, dict):
+    st.info("위치 확인 버튼을 누르고 위치 권한을 허용해 주세요.")
+    st.stop()
 
-            results = model.predict(
-                image,
-                conf=confidence,
-                imgsz=640,
-                verbose=False
+lat = location.get("latitude")
+lon = location.get("longitude")
+
+if lat is None or lon is None:
+    st.info("현재 위치를 가져오지 못했습니다. 위치 권한을 확인해 주세요.")
+    st.stop()
+
+try:
+    lat = float(lat)
+    lon = float(lon)
+except (TypeError, ValueError):
+    st.error("위치 정보가 올바르지 않습니다.")
+    st.stop()
+
+if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+    st.error("올바르지 않은 GPS 좌표입니다.")
+    st.stop()
+
+st.success("현재 위치를 확인했습니다.")
+
+st.subheader("🚧 주변 보행 주의 정보")
+
+if st.button("주변 500m 검색", type="primary", use_container_width=True):
+    query = f"""
+    [out:json][timeout:25];
+    (
+      nwr(around:500,{lat},{lon})["construction"];
+      nwr(around:500,{lat},{lon})["highway"="steps"];
+      nwr(around:500,{lat},{lon})["barrier"="construction"];
+    );
+    out center tags;
+    """
+
+    try:
+        with st.spinner("주변 지도 정보를 검색하고 있습니다..."):
+            response = requests.post(
+                "https://overpass-api.de/api/interpreter",
+                data={"data": query},
+                timeout=35,
             )
+            response.raise_for_status()
+            data = response.json()
 
-            found = []
+        results = []
 
-            for box in results[0].boxes:
-                class_id = int(box.cls[0])
-                class_name = model.names[class_id]
+        for item in data.get("elements", []):
+            tags = item.get("tags", {})
 
-                if class_name in selected_objects:
-                    found.append(OBJECTS[class_name])
+            if "construction" in tags or tags.get("barrier") == "construction":
+                kind = "공사 관련 정보"
+            elif tags.get("highway") == "steps":
+                kind = "계단"
+            else:
+                kind = "보행 주의 정보"
 
-            with result_lock:
-                detection_state["objects"] = found
-                detection_state["last_detection"] = now
+            results.append({
+                "종류": kind,
+                "이름": tags.get("name", "이름 미등록"),
+            })
 
-            # 감지된 물체에 테두리 표시
-            image = results[0].plot()
+        st.session_state["results"] = results
+        st.session_state["searched"] = True
 
-        return av.VideoFrame.from_ndarray(
-            image,
-            format="bgr24"
+    except requests.RequestException:
+        st.error("지도 서버 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+    except ValueError:
+        st.error("지도 데이터를 읽을 수 없습니다.")
+
+if st.session_state.get("searched", False):
+    results = st.session_state.get("results", [])
+
+    if results:
+        st.error(f"지도에서 보행 주의 정보 {len(results)}개를 찾았습니다.")
+        st.dataframe(
+            pd.DataFrame(results),
+            use_container_width=True,
+            hide_index=True,
         )
+    else:
+        st.success("검색 조건에 해당하는 정보가 없습니다.")
 
-# ----------------------------
-# 6. 경보음 생성
-# ----------------------------
-def create_beep():
-    sample_rate = 22050
-    duration = 0.35
-    frequency = 880
-
-    buffer = io.BytesIO()
-
-    with wave.open(buffer, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-
-        samples = bytearray()
-
-        for i in range(int(sample_rate * duration)):
-            value = int(
-                10000 * math.sin(
-                    2 * math.pi * frequency * i / sample_rate
-                )
-            )
-            samples.extend(struct.pack("<h", value))
-
-        wav.writeframes(samples)
-
-    return buffer.getvalue()
-
-# ----------------------------
-# 7. 카메라 시작
-# ----------------------------
-st.subheader("📷 실시간 카메라")
-
-webrtc_streamer(
-    key="safety-camera",
-    mode=WebRtcMode.SENDRECV,
-    video_processor_factory=SafetyDetector,
-    media_stream_constraints={
-        "video": True,
-        "audio": False,
-    },
-    async_processing=True,
-)
-
-# ----------------------------
-# 8. 경고 화면
-# ----------------------------
-st.subheader("📢 감지 결과")
-
-with result_lock:
-    detected = list(detection_state["objects"])
-    last_detection = detection_state["last_detection"]
-
-# 오래된 결과를 현재 결과로 오인하지 않도록 처리
-if time.time() - last_detection > 2:
-    detected = []
-
-if detected:
-    st.error(
-        "⚠️ 주의 대상 감지: "
-        + ", ".join(sorted(set(detected)))
+    st.caption(
+        "검색 결과가 없더라도 주변이 안전하다는 뜻은 아닙니다."
     )
-
-    st.warning(
-        "주변을 확인하고 안전한 거리를 유지하세요."
-    )
-
-    # 경고음 재생은 브라우저의 자동 재생 정책에 따라
-    # 사용자 조작이 필요할 수 있음
-    st.audio(
-        create_beep(),
-        format="audio/wav",
-        autoplay=True
-    )
-else:
-    st.success("현재 감지된 경고 대상이 없습니다.")
-
-st.caption(
-    "주의: 이 프로그램은 물체 감지용 시제품입니다. "
-    "실제 위험 여부를 판정하거나 모든 위험을 감지하지는 못합니다."
-)
 
