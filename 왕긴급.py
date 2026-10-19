@@ -111,23 +111,27 @@ st.markdown("""
 
 # --- [화면 1: 메인 홈] ---
 if st.session_state['page'] == 'home':
+    
+    # 🌟 천사 경보기 이미지 파일 지정 및 표시 🌟
+    target_images = ['image_13935c.png', 'image_0.png', 'image.png']
     found_image = None
-    for file in os.listdir('.'):
-        if file.lower().endswith(('.png', '.jpg', '.jpeg')):
-            found_image = file
+    
+    for img in target_images:
+        if os.path.exists(img):
+            found_image = img
             break
+            
+    if not found_image:
+        for file in os.listdir('.'):
+            if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                found_image = file
+                break
 
-    image_loaded = False
     if found_image:
-        try:
-            col_l, col_c, col_r = st.columns([1, 2, 1])
-            with col_c:
-                st.image(found_image, use_container_width=True)
-            image_loaded = True
-        except Exception:
-            image_loaded = False
-
-    if not image_loaded:
+        col_l, col_c, col_r = st.columns([1, 2, 1])
+        with col_c:
+            st.image(found_image, use_container_width=True)
+    else:
         st.markdown("""
         <div class="title-banner">
             <div class="main-title">BIG-GINGEUP!!</div>
@@ -183,84 +187,4 @@ if st.session_state['page'] == 'home':
     st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
 
 # --- [화면 2: 자동 긴급 전화] ---
-elif st.session_state['page'] == 'call':
-    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button("메인으로 돌아가기", key="b1"):
-        st.session_state['page'] = 'home'
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.title("📞 자동 긴급 전화 서비스")
-    st.write("긴급 상황 시 버튼 한 번으로 도움을 요청하세요.")
-    st.divider()
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.error("### 119 긴급 구조대")
-        st.write("클릭 시 119로 즉시 전화가 연결됩니다.")
-        st.markdown("""
-        <a href="tel:119" style="display:inline-block; background-color:#ff4757; color:white; padding:16px 30px; border-radius:18px; font-size:1.3em; font-weight:bold; text-decoration:none;">
-            119 바로 전화걸기
-        </a>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.warning("### 보호자 비상 연락")
-        phone_num = st.text_input("보호자 전화번호:", "010-1234-5678")
-        if st.button("SOS 문자 보내기", key="sos_btn"):
-            msg_text = phone_num + " 번호로 위치 정보와 함께 SOS 메시지를 발송했습니다!"
-            st.success(msg_text)
-
-# --- [화면 3: 주변 위험 감지] ---
-elif st.session_state['page'] == 'detect':
-    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button("메인으로 돌아가기", key="b2"):
-        st.session_state['page'] = 'home'
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.title("📡 주변 위험 감지 서비스")
-    st.write("센서로 보행 중 주변 위험 요소를 실시간 감지합니다.")
-    st.divider()
-
-    if st.button("실시간 감지 스캔", key="scan_btn"):
-        st.success("주변 레이더 센서 정상 작동 중!")
-
-    st.write("")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.warning("전방 감지: 전방 1.5m 지점에 문턱이 있습니다. 주의하세요!")
-    with c2:
-        st.info("측면 감지: 좌/우측 도로가 안전합니다.")
-
-# --- [화면 4: 안전한 길 안내] ---
-elif st.session_state['page'] == 'path':
-    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button("메인으로 돌아가기", key="b3"):
-        st.session_state['page'] = 'home'
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.title("🗺️ 안전한 길 안내 서비스")
-    st.write("계단이나 경사가 없는 안전한 보행 경로를 안내합니다.")
-    st.divider()
-
-    dest = st.text_input("목적지 입력:", "경로당")
-    if st.button("안전 경로 탐색", key="find_btn"):
-        success_msg = dest + " (으)로 가는 무장애 최적 경로 탐색 완료!"
-        st.success(success_msg)
-        
-        map_html = """
-        <div class="mock-map">
-            📍 안심 경로 안내<br><br>
-            • 목적지: """ + dest + """<br>
-            • 소요시간: 도보 12분<br>
-            • 경로: 계단 없음 / 턱 없음 / 평지 위주 경로
-        </div>
-        """
-        st.markdown(map_html, unsafe_allow_html=True)
-        st.write("")
-        
-        link_url = "https://map.kakao.com/?q=" + dest
-        link_label = "카카오맵으로 " + dest + " 지도로 보기"
-        st.link_button(link_label, link_url)
+elif st.session
