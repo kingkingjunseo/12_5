@@ -1,15 +1,12 @@
 
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import folium
 
 from streamlit_geolocation import streamlit_geolocation
 from streamlit_folium import st_folium
 
-
-# ---------------------------
-# 1. 기본 설정
-# ---------------------------
 st.set_page_config(
     page_title="안전 동행",
     page_icon="🚶",
@@ -17,73 +14,88 @@ st.set_page_config(
 )
 
 st.title("🚶 안전 동행")
-st.header("어르신 보행 안전 도우미")
-
-st.markdown("""
-<style>
-.stApp {
-    font-size: 19px;
-}
-.stButton button {
-    min-height: 55px;
-    font-size: 20px;
-    font-weight: bold;
-}
-</style>
-""", unsafe_allow_html=True)
+st.subheader("현재 위치 및 주변 보행 주의 정보")
 
 st.info(
-    "현재 위치를 지도에 표시하고, 주변 지도 데이터에 등록된 "
-    "공사 구역과 계단 등의 보행 주의 요소를 찾아 표시합니다."
+    "위치 확인 후 지도에 내 위치를 표시합니다. "
+    "위치 정확도가 낮으면 주변 위험 검색을 진행하지 않습니다."
 )
 
-
-# ---------------------------
-# 2. GPS 위치 가져오기
-# ---------------------------
-st.subheader("📍 현재 위치")
-
+# 1. 브라우저에서 위치 가져오기
 location = streamlit_geolocation()
 
 if not isinstance(location, dict):
-    st.warning(
-        "현재 위치를 가져오려면 위의 위치 확인 버튼을 누르고 "
-        "브라우저의 위치 권한을 허용해 주세요."
-    )
+    st.warning("위치 확인 버튼을 누르고 브라우저의 위치 권한을 허용해 주세요.")
     st.stop()
 
-latitude = location.get("latitude")
-longitude = location.get("longitude")
+lat = location.get("latitude")
+lon = location.get("longitude")
+accuracy = location.get("accuracy")
 
-if latitude is None or longitude is None:
-    st.info("위치 정보가 아직 없습니다. 위치 확인 버튼을 다시 눌러 주세요.")
+if lat is None or lon is None:
+    st.warning("아직 좌표를 받지 못했습니다. 위치 확인 버튼을 다시 눌러 주세요.")
     st.stop()
 
 try:
-    latitude = float(latitude)
-    longitude = float(longitude)
+    lat = float(lat)
+    lon = float(lon)
+    accuracy = float(accuracy) if accuracy is not None else None
 except (ValueError, TypeError):
-    st.error("GPS 좌표를 읽을 수 없습니다.")
+    st.error("좌표 또는 위치 정확도를 읽을 수 없습니다.")
     st.stop()
 
-if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
-    st.error("올바르지 않은 GPS 좌표입니다.")
+if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+    st.error("잘못된 좌표가 반환되었습니다.")
     st.stop()
 
-st.success("현재 위치를 확인했습니다.")
+st.write(f"**위도:** {lat:.6f}")
+st.write(f"**경도:** {lon:.6f}")
 
-accuracy = location.get("accuracy")
-if isinstance(accuracy, (int, float)):
-    st.caption(f"위치 정확도 약 ±{accuracy:.0f}m")
+if accuracy is None:
+    st.warning("기기에서 위치 정확도 정보를 받지 못했습니다.")
+elif accuracy > 1000:
+    st.error(
+        f"위치 오차가 약 {accuracy:.0f}m입니다. "
+        "현재 위치가 부정확할 수 있어 위험 정보 검색을 중단했습니다."
+    )
+    st.info(
+        "기기의 위치 권한을 확인하고 다시 시도해 주세요. "
+        "데스크톱은 휴대전화보다 위치가 부정확할 수 있습니다."
+    )
+    st.stop()
+else:
+    st.success(f"위치 정보 수신 완료 · 표시된 정확도 약 ±{accuracy:.0f}m")
 
+# 2. 지도 표시
+st.subheader("🗺️ 내 현재 위치")
 
-# ---------------------------
-# 3. 주변 위험 지도 데이터 검색
-# ---------------------------
-@st.cache_data(ttl=300)
-def search_nearby(latitude, longitude):
+map_view = folium.Map(
+    location=[lat, lon],
+    zoom_start=17,
+    control_scale=True,
+)
+
+folium.Marker(
+    [lat, lon],
+    tooltip="기기에서 받은 현재 좌표",
+    popup=f"위도: {lat:.6f}<br>경도: {lon:.6f}",
+    icon=folium.Icon(color="blue", icon="user", prefix="fa"),
+).add_to(map_view)
+
+st_folium(
+    map_view,
+    height=500,
+    use_container_width=True,
+    key=f"map_{lat:.5f}_{lon:.5f}",
+)
+
+# 3. 주변 보행 주의 정보 검색
+st.subheader("🚧 주변 500m 보행 주의 정보")
+
+@st.cache_data(ttl=180)
+def find_hazards(latitude, longitude):
     query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:20];
     (
       nwr(around:500,{latitude},{longitude})["construction"];
       nwr(around:500,{latitude},{longitude})["highway"="steps"];
@@ -97,7 +109,6 @@ def search_nearby(latitude, longitude):
     servers = [
         "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
-        "https://overpass.private.coffee/api/interpreter",
     ]
 
     errors = []
@@ -107,36 +118,24 @@ def search_nearby(latitude, longitude):
             response = requests.post(
                 server,
                 data={"data": query},
-                headers={
-                    "User-Agent": "SafetyCompanion/1.0"
-                },
-                timeout=(10, 35),
+                timeout=30,
+                headers={"User-Agent": "SafetyCompanion/1.0"},
             )
-
             response.raise_for_status()
             data = response.json()
 
-            hazards = []
-            seen = set()
-
+            results = []
             for element in data.get("elements", []):
                 tags = element.get("tags", {})
 
                 if "lat" in element and "lon" in element:
-                    lat = element["lat"]
-                    lon = element["lon"]
+                    e_lat, e_lon = element["lat"], element["lon"]
                 else:
                     center = element.get("center", {})
-                    lat = center.get("lat")
-                    lon = center.get("lon")
+                    e_lat, e_lon = center.get("lat"), center.get("lon")
 
-                if lat is None or lon is None:
+                if e_lat is None or e_lon is None:
                     continue
-
-                key = (element.get("type"), element.get("id"))
-                if key in seen:
-                    continue
-                seen.add(key)
 
                 if (
                     "construction" in tags
@@ -148,153 +147,69 @@ def search_nearby(latitude, longitude):
                 elif tags.get("surface") in ("gravel", "unpaved"):
                     kind = "자갈·비포장 보행로"
                 else:
-                    kind = "보행 주의 정보"
+                    continue
 
-                hazards.append({
-                    "lat": float(lat),
-                    "lon": float(lon),
+                results.append({
+                    "lat": float(e_lat),
+                    "lon": float(e_lon),
                     "kind": kind,
                     "name": tags.get("name", "이름 미등록"),
                 })
 
-            return hazards, None
+            return results, None
 
-        except (
-            requests.RequestException,
-            ValueError,
-        ) as error:
-            errors.append(f"{server}: {error}")
+        except (requests.RequestException, ValueError) as error:
+            errors.append(str(error))
 
-    return [], "\n".join(errors)
+    return [], " / ".join(errors)
 
 
-# ---------------------------
-# 4. 검색 버튼
-# ---------------------------
-st.subheader("🚧 주변 500m 주의 요소")
-
-if st.button(
-    "🔎 주변 위험 정보 검색",
-    type="primary",
-    use_container_width=True,
-):
-    with st.spinner("주변 지도 데이터를 검색하고 있습니다..."):
-        hazards, error = search_nearby(
-            round(latitude, 5),
-            round(longitude, 5),
-        )
+if st.button("🔎 주변 주의 정보 검색", type="primary"):
+    with st.spinner("주변 지도 데이터를 검색 중입니다..."):
+        hazards, error = find_hazards(round(lat, 5), round(lon, 5))
 
     if error:
-        st.session_state["hazard_error"] = error
-        st.session_state["hazards"] = []
-        st.session_state["hazard_location"] = (
-            round(latitude, 5),
-            round(longitude, 5),
-        )
+        st.error("주변 정보 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.")
+        st.caption(error)
+    elif not hazards:
+        st.info("지도 데이터에서 해당 조건의 주의 정보를 찾지 못했습니다.")
     else:
-        st.session_state["hazard_error"] = None
-        st.session_state["hazards"] = hazards
-        st.session_state["hazard_location"] = (
-            round(latitude, 5),
-            round(longitude, 5),
+        hazard_map = folium.Map(
+            location=[lat, lon],
+            zoom_start=17,
+            control_scale=True,
         )
 
+        folium.Marker(
+            [lat, lon],
+            tooltip="현재 위치",
+            icon=folium.Icon(color="blue", icon="user", prefix="fa"),
+        ).add_to(hazard_map)
 
-# ---------------------------
-# 5. 지도에 위치와 주의 요소 표시
-# ---------------------------
-st.subheader("🗺️ 내 주변 지도")
+        for item in hazards:
+            folium.Marker(
+                [item["lat"], item["lon"]],
+                tooltip=item["kind"],
+                popup=f'{item["kind"]}<br>이름: {item["name"]}',
+                icon=folium.Icon(
+                    color="red",
+                    icon="exclamation-triangle",
+                    prefix="fa",
+                ),
+            ).add_to(hazard_map)
 
-current_key = (round(latitude, 5), round(longitude, 5))
-
-if st.session_state.get("hazard_location") != current_key:
-    hazards = []
-    search_error = None
-else:
-    hazards = st.session_state.get("hazards", [])
-    search_error = st.session_state.get("hazard_error")
-
-map_view = folium.Map(
-    location=[latitude, longitude],
-    zoom_start=17,
-    control_scale=True,
-)
-
-# 현재 위치: 파란색 표식
-folium.Marker(
-    location=[latitude, longitude],
-    tooltip="현재 위치",
-    popup="내 현재 위치",
-    icon=folium.Icon(
-        color="blue",
-        icon="user",
-        prefix="fa",
-    ),
-).add_to(map_view)
-
-# 현재 위치 기준 500m 범위
-folium.Circle(
-    location=[latitude, longitude],
-    radius=500,
-    color="blue",
-    fill=True,
-    fill_opacity=0.06,
-    tooltip="검색 범위 약 500m",
-).add_to(map_view)
-
-# 주의 요소: 빨간색 표식
-for hazard in hazards:
-    folium.Marker(
-        location=[hazard["lat"], hazard["lon"]],
-        tooltip=hazard["kind"],
-        popup=(
-            f"{hazard['kind']}<br>"
-            f"이름: {hazard['name']}"
-        ),
-        icon=folium.Icon(
-            color="red",
-            icon="exclamation-triangle",
-            prefix="fa",
-        ),
-    ).add_to(map_view)
-
-st_folium(
-    map_view,
-    height=520,
-    use_container_width=True,
-)
-
-st.markdown("""
-🔵 파란색: 현재 위치
-
-🔴 빨간색: 지도 데이터에서 찾은 보행 주의 요소
-""")
-
-if search_error:
-    st.error(
-        "지도 위험 정보 서버에 연결하지 못했습니다. "
-        "지도는 표시되지만 주의 요소는 불러오지 못했습니다."
-    )
-    st.caption("오류 정보")
-    st.code(search_error)
-
-elif hazards:
-    st.warning(
-        f"지도 데이터에서 주의 요소 {len(hazards)}개를 찾았습니다."
-    )
-
-    for item in hazards:
-        st.markdown(
-            f"- ⚠️ **{item['kind']}** — {item['name']}"
+        st_folium(
+            hazard_map,
+            height=520,
+            use_container_width=True,
+            key=f"hazards_{lat:.5f}_{lon:.5f}",
         )
 
-elif st.session_state.get("hazard_location") == current_key:
-    st.success("검색 조건에 맞는 지도 정보가 없습니다.")
-
-st.divider()
+        st.warning(f"지도 데이터에서 주의 정보 {len(hazards)}개를 찾았습니다.")
+        for item in hazards:
+            st.write(f"⚠️ {item['kind']} — {item['name']}")
 
 st.caption(
-    "안전 동행은 보행 보조용 시제품입니다. "
-    "지도에 없는 위험이나 실시간 장애물을 감지하지 못하며, "
-    "검색 결과가 없다고 안전한 것은 아닙니다."
+    "주의: 이 앱은 지도에 등록된 일부 공사·계단·노면 정보만 표시합니다. "
+    "실시간 위험을 모두 감지하지 못하므로 지도에 표시가 없어도 안전하다는 뜻은 아닙니다."
 )
