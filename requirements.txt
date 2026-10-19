@@ -1,6 +1,8 @@
-
-streamlit
-streamlit-geolocation
-streamlit-folium
-folium
+streamlit>=1.35.0
 requests
+pandas
+google-generativeai>=0.8.0
+openrouteservice>=2.3.0
+folium>=0.15.0
+streamlit-folium>=0.20.0
+av
