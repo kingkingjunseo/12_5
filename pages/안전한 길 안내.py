@@ -1,50 +1,152 @@
 import streamlit as st
+import openrouteservice
+from openrouteservice import convert
+import folium
+from streamlit_folium import st_folium
 
-st.set_page_config(page_title="안전한 길 안내", page_icon="🚶", layout="centered")
+st.set_page_config(page_title="무장애 안전 경로 안내", page_icon="♿", layout="wide")
 
-st.title("안전한 길 안내")
-st.write("턱, 계단, 장애물 확인을 돕는 웹 앱 프로토타입입니다.")
+st.title("♿ 무장애 안전 경로 안내")
+st.write("장소를 검색하고 휠체어 경로 프로필로 경로를 계산하는 웹 앱입니다.")
 
 st.warning(
-    "현재 버전은 실제 지도 경로나 도로 장애물 데이터를 조회하지 않습니다. "
-    "이동 전 현장 표지와 주변 상황을 확인하세요."
+    "경로는 OpenStreetMap 기반 데이터로 계산됩니다. 실제 보도 턱, 임시 공사, "
+    "엘리베이터 고장 등 모든 현장 상황을 보장하지 않으므로 이동 전 주변 상황을 확인하세요."
 )
 
+api_key = None
+try:
+    api_key = st.secrets.get("ORS_API_KEY")
+except Exception:
+    api_key = None
+
+if not api_key:
+    st.error("OpenRouteService API 키가 아직 설정되지 않았어요. 아래 설정 방법을 먼저 완료해 주세요.")
+    st.markdown(
+        "1. OpenRouteService 계정을 만들고 API 키를 발급받으세요: "
+        "[API 키 발급 사이트](https://openrouteservice.org/dev/#/signup)\\n"
+        "2. Streamlit Cloud에서 앱의 **Settings → Secrets**를 여세요.\\n"
+        "3. 아래 한 줄을 추가하고 저장한 뒤 앱을 재실행하세요."
+    )
+    st.code('ORS_API_KEY = "여기에_발급받은_API_키"')
+    st.stop()
+
 with st.form("route_form"):
-    start = st.text_input("출발지", placeholder="예: 서울시청")
-    destination = st.text_input("도착지", placeholder="예: 경복궁")
+    col1, col2 = st.columns(2)
+    with col1:
+        start_text = st.text_input("출발지", placeholder="예: 서울시청")
+    with col2:
+        end_text = st.text_input("도착지", placeholder="예: 경복궁")
 
-    st.subheader("안전 조건")
-    avoid_stairs = st.checkbox("계단이 없는 경로 우선", value=True)
-    avoid_curbs = st.checkbox("보도 턱과 단차 확인", value=True)
-    avoid_obstacles = st.checkbox("공사와 장애물 확인", value=True)
-    mobility = st.selectbox("이동 방식", ["휠체어", "유모차", "보행", "기타"])
-
-    submitted = st.form_submit_button("안전 경로 확인")
+    st.caption("장소 이름이나 주소를 입력하세요. 한국 내 장소를 권장합니다.")
+    avoid_steps = st.checkbox("계단 회피 우선", value=True)
+    max_incline = st.slider("허용할 최대 경사도(도)", min_value=3, max_value=15, value=6)
+    submitted = st.form_submit_button("무장애 경로 찾기", type="primary")
 
 if submitted:
-    if not start.strip() or not destination.strip():
+    if not start_text.strip() or not end_text.strip():
         st.error("출발지와 도착지를 모두 입력해 주세요.")
-    else:
-        st.success("입력한 경로: " + start.strip() + " -> " + destination.strip())
-        st.write("이동 방식: " + mobility)
-        st.subheader("이동 전 확인 목록")
+        st.stop()
 
-        if avoid_stairs:
-            st.write("- 계단 대신 경사로나 엘리베이터가 있는지 확인하세요.")
-        if avoid_curbs:
-            st.write("- 보도 턱과 횡단보도 진입부의 단차를 확인하세요.")
-        if avoid_obstacles:
-            st.write("- 공사 구간, 적치물, 좁은 통행로가 있는지 확인하세요.")
+    client = openrouteservice.Client(key=api_key, timeout=30)
 
-        st.write("- 횡단보도 신호와 주변 교통 상황을 확인하세요.")
-        st.info(
-            "이 결과는 실제 길찾기 결과가 아니라 확인용 체크리스트입니다. "
-            "실제 안전 경로를 제공하려면 지도 API와 최신 접근성 데이터가 필요합니다."
+    try:
+        with st.spinner("장소를 검색하고 경로를 계산하고 있어요..."):
+            start_result = client.pelias_search(text=start_text.strip(), size=1)
+            end_result = client.pelias_search(text=end_text.strip(), size=1)
+
+            if not start_result.get("features") or not end_result.get("features"):
+                st.error("장소를 찾지 못했어요. 더 구체적인 주소나 장소 이름으로 다시 검색해 주세요.")
+                st.stop()
+
+            start_feature = start_result["features"][0]
+            end_feature = end_result["features"][0]
+            start_lon, start_lat = start_feature["geometry"]["coordinates"][:2]
+            end_lon, end_lat = end_feature["geometry"]["coordinates"][:2]
+            start_label = start_feature.get("properties", {}).get("label", start_text)
+            end_label = end_feature.get("properties", {}).get("label", end_text)
+
+            options = {}
+            if avoid_steps:
+                options["avoid_features"] = ["steps"]
+            options["profile_params"] = {
+                "restrictions": {
+                    "maximum_incline": int(max_incline)
+                }
+            }
+
+            route = client.directions(
+                coordinates=((start_lon, start_lat), (end_lon, end_lat)),
+                profile="wheelchair",
+                format="json",
+                instructions=True,
+                language="ko",
+                units="m",
+                options=options,
+            )
+
+        route_data = route["routes"][0]
+        geometry = convert.decode_polyline(route_data["geometry"])
+        route_coords = geometry["coordinates"]  # [longitude, latitude]
+
+        st.success("경로 계산이 완료됐어요.")
+        metric1, metric2 = st.columns(2)
+        metric1.metric("경로 거리", f'{route_data["summary"]["distance"] / 1000:.2f} km')
+        metric2.metric("예상 소요 시간", f'{max(1, round(route_data["summary"]["duration"] / 60))}분')
+
+        map_center = [(start_lat + end_lat) / 2, (start_lon + end_lon) / 2]
+        route_map = folium.Map(location=map_center, zoom_start=14, control_scale=True)
+        folium.Marker(
+            [start_lat, start_lon],
+            tooltip="출발지",
+            popup=start_label,
+            icon=folium.Icon(color="green", icon="play"),
+        ).add_to(route_map)
+        folium.Marker(
+            [end_lat, end_lon],
+            tooltip="도착지",
+            popup=end_label,
+            icon=folium.Icon(color="red", icon="flag"),
+        ).add_to(route_map)
+        folium.PolyLine(
+            locations=[[lat, lon] for lon, lat in route_coords],
+            tooltip="계산된 휠체어 경로",
+            weight=6,
+        ).add_to(route_map)
+
+        min_lat = min([lat for lon, lat in route_coords])
+        max_lat = max([lat for lon, lat in route_coords])
+        min_lon = min([lon for lon, lat in route_coords])
+        max_lon = max([lon for lon, lat in route_coords])
+        route_map.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])
+
+        st.subheader("지도")
+        st_folium(route_map, use_container_width=True, height=520)
+
+        st.subheader("이동 안내")
+        for segment in route_data.get("segments", []):
+            for step in segment.get("steps", []):
+                instruction = step.get("instruction")
+                if instruction:
+                    distance = step.get("distance", 0)
+                    st.write(f"- {instruction} ({distance:.0f} m)")
+
+        st.caption(
+            "주의: '휠체어 경로'는 데이터베이스에 기록된 도로 특성을 바탕으로 계산한 결과입니다. "
+            "실제 경사, 턱, 공사, 통행 가능 여부가 완전히 반영되지 않을 수 있습니다."
         )
 
-st.divider()
-st.subheader("향후 추가할 기능")
-st.write("1. 실제 지도 경로 표시")
-st.write("2. 경사로, 계단, 턱, 공사 구간 데이터 연동")
-st.write("3. 데이터 출처와 업데이트 시각 표시")
+    except openrouteservice.exceptions.ApiError as exc:
+        st.error("경로 API에서 오류가 반환됐어요. API 키, 사용량 제한, 입력한 장소를 확인해 주세요.")
+        st.code(str(exc))
+    except Exception as exc:
+        st.error("요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.")
+        st.code(str(exc))
+
+else:
+    st.info("출발지와 도착지를 입력한 뒤 '무장애 경로 찾기'를 눌러 주세요.")
+    st.markdown("### 작동 방식")
+    st.write("1. 장소 이름을 좌표로 검색합니다.")
+    st.write("2. 휠체어 경로 프로필로 경로를 요청합니다.")
+    st.write("3. 지도와 이동 안내를 표시합니다.")
+    st.write("실제 경로 계산에는 API 키와 인터넷 연결이 필요합니다.")
