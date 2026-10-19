@@ -97,35 +97,26 @@ else:
 
 st.write("")
 
-# 4. 3개 카드 영역 및 페이지 이동 버튼
+# 4. 3개 카드 영역 및 페이지 이동
 cols = st.columns(3)
 
 # 1. 자동 긴급 전화
 with cols[0]:
     st.markdown('<div class="card-box bg-red"><div class="card-icon">📞🚨</div><div class="card-title title-red">자동 긴급 전화</div><div class="card-desc">긴급상황 시 보호자와 구조대에게 바로 신고해요</div></div>', unsafe_allow_html=True)
     if st.button("🚨 긴급 신고 바로가기", key="go_call"):
-        try:
-            st.switch_page("pages/1_자동긴급전화.py")
-        except Exception:
-            st.switch_page("자동긴급전화.py")
+        st.switch_page("pages/1_call.py")
 
 # 2. 주변 위험 감지
 with cols[1]:
     st.markdown('<div class="card-box bg-yellow"><div class="card-icon">📡⚠️</div><div class="card-title title-yellow">주변 위험 감지</div><div class="card-desc">주변 장애물을 센서를 통해 감지해서 안전을 지켜요</div></div>', unsafe_allow_html=True)
     if st.button("⚠️ 위험 감지 바로가기", key="go_detect"):
-        try:
-            st.switch_page("pages/2_주변위험감지.py")
-        except Exception:
-            st.switch_page("주변위험감지.py")
+        st.switch_page("pages/2_detect.py")
 
 # 3. 안전한 길 안내
 with cols[2]:
     st.markdown('<div class="card-box bg-blue"><div class="card-icon">🗺️🚶</div><div class="card-title title-blue">안전한 길 안내</div><div class="card-desc">안전한 길로만 안내하여 안전한 보행을 도와요</div></div>', unsafe_allow_html=True)
     if st.button("🚶 길 안내 바로가기", key="go_path"):
-        try:
-            st.switch_page("pages/3_안전한길안내.py")
-        except Exception:
-            st.switch_page("안전한길안내.py")
+        st.switch_page("pages/3_path.py")
 
 st.divider()
 st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
