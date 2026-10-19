@@ -3,8 +3,8 @@ import os
 
 # 1. 페이지 기본 설정
 st.set_page_config(
-    page_title="왕긴급! (BIG-GINGEUP)",
-    page_icon="👼",
+    page_title="왕긴급!",
+    page_icon="🚨",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -34,11 +34,9 @@ st.markdown("""
         font-size: 2.8em;
         font-weight: 900;
         color: #ff5e7e;
-        letter-spacing: 1px;
         margin-bottom: 8px;
     }
 
-    /* 귀여운 파스텔 카드 박스 */
     .card-box {
         border-radius: 30px;
         padding: 25px 20px 15px 20px;
@@ -64,7 +62,6 @@ st.markdown("""
         font-weight: 600;
     }
 
-    /* 카드별 파스텔 색상 */
     .bg-pink { background-color: #fff0f3; }
     .title-pink { color: #ff4757; }
 
@@ -74,7 +71,6 @@ st.markdown("""
     .bg-blue { background-color: #e8f4ff; }
     .title-blue { color: #1e90ff; }
 
-    /* 동글동글 통통한 이동 버튼 */
     div.stButton > button {
         width: 100% !important;
         border-radius: 22px !important;
@@ -85,7 +81,6 @@ st.markdown("""
         box-shadow: 0 6px 12px rgba(0,0,0,0.08) !important;
     }
 
-    /* 버튼 포인트 색상 */
     div[data-testid="column"]:nth-child(1) div.stButton > button {
         background-color: #ff6b81 !important;
         color: white !important;
@@ -99,7 +94,6 @@ st.markdown("""
         color: white !important;
     }
 
-    /* 뒤로가기 버튼 */
     .back-btn div.stButton > button {
         background-color: #a4b0be !important;
         color: white !important;
@@ -127,20 +121,12 @@ st.markdown("""
 # --- [화면 1: 메인 홈] ---
 if st.session_state['page'] == 'home':
     
-    # 🌟 이미지 자동 탐색 🌟
-    possible_files = ['image_0.png', 'image_13935c.png', 'image_12aa84.png', 'image.png']
+    # 이미지 자동 탐색
     found_image = None
-
-    for file in possible_files:
-        if os.path.exists(file):
+    for file in os.listdir('.'):
+        if file.lower().endswith(('.png', '.jpg', '.jpeg')):
             found_image = file
             break
-            
-    if not found_image:
-        for file in os.listdir('.'):
-            if file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                found_image = file
-                break
 
     image_loaded = False
     if found_image:
@@ -155,7 +141,7 @@ if st.session_state['page'] == 'home':
     if not image_loaded:
         st.markdown("""
         <div class="title-banner">
-            <div class="main-title">👼 BIG-GINGEUP!! 🚨</div>
+            <div class="main-title">BIG-GINGEUP!!</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -166,19 +152,18 @@ if st.session_state['page'] == 'home':
     </div>
     """, unsafe_allow_html=True)
 
-    # 파스텔 3개 기능 카드
     cols = st.columns(3)
 
     # 1. 자동 긴급 전화
     with cols[0]:
         st.markdown("""
         <div class="card-box bg-pink">
-            <div class="card-icon">📞💖</div>
+            <div class="card-icon">📞</div>
             <div class="card-title title-pink">자동 긴급 전화</div>
             <div class="card-desc">긴급상황 시 보호자와 구조대에게 바로 신고해요</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("🚨 긴급 신고 바로가기", key="go_call"):
+        if st.button("긴급 신고 바로가기", key="go_call"):
             st.session_state['page'] = 'call'
             st.rerun()
 
@@ -186,12 +171,12 @@ if st.session_state['page'] == 'home':
     with cols[1]:
         st.markdown("""
         <div class="card-box bg-yellow">
-            <div class="card-icon">📡✨</div>
+            <div class="card-icon">📡</div>
             <div class="card-title title-yellow">주변 위험 감지</div>
             <div class="card-desc">주변 장애물을 센서를 통해 감지해서 안전을 지켜요</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("⚠️ 위험 확인 바로가기", key="go_detect"):
+        if st.button("위험 확인 바로가기", key="go_detect"):
             st.session_state['page'] = 'detect'
             st.rerun()
 
@@ -199,23 +184,23 @@ if st.session_state['page'] == 'home':
     with cols[2]:
         st.markdown("""
         <div class="card-box bg-blue">
-            <div class="card-icon">🗺️🧸</div>
+            <div class="card-icon">🗺️</div>
             <div class="card-title title-blue">안전한 길 안내</div>
             <div class="card-desc">안전한 길로만 안내하여 안전한 보행을 도와요</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("🚶 길 안내 바로가기", key="go_path"):
+        if st.button("길 안내 바로가기", key="go_path"):
             st.session_state['page'] = 'path'
             st.rerun()
 
     st.divider()
-    st.caption("💖 빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
+    st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
 
 
 # --- [화면 2: 자동 긴급 전화] ---
 elif st.session_state['page'] == 'call':
     st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button("👈 메인으로 돌아가기", key="back_home1"):
+    if st.button("메인으로 돌아가기", key="b1"):
         st.session_state['page'] = 'home'
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
@@ -226,26 +211,25 @@ elif st.session_state['page'] == 'call':
 
     col1, col2 = st.columns(2)
     with col1:
-        st.error("### 🚑 119 긴급 구조대")
+        st.error("### 119 긴급 구조대")
         st.write("클릭 시 119로 즉시 전화가 연결됩니다.")
-        # 안전한 삼중 따옴표(multiline) 처리
         st.markdown("""
         <a href="tel:119" style="display:inline-block; background-color:#ff4757; color:white; padding:16px 30px; border-radius:18px; font-size:1.3em; font-weight:bold; text-decoration:none;">
-            📞 119 바로 전화걸기
+            119 바로 전화걸기
         </a>
         """, unsafe_allow_html=True)
 
     with col2:
-        st.warning("### 👨‍👩‍👧‍👦 보호자 비상 연락")
+        st.warning("### 보호자 비상 연락")
         phone_num = st.text_input("보호자 전화번호:", "010-1234-5678")
-        if st.button("💬 SOS 문자 보내기"):
-            st.success(f"✅ [{phone_num}] 번호로 위치 정보와 함께 SOS 메시지를 발송했습니다!")
+        if st.button("SOS 문자 보내기", key="sos_btn"):
+            st.success(f"[{phone_num}] 번호로 위치 정보와 함께 SOS 메시지를 발송했습니다!")
 
 
 # --- [화면 3: 주변 위험 감지] ---
 elif st.session_state['page'] == 'detect':
     st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button("👈 메인으로 돌아가기", key="back_home2"):
+    if st.button("메인으로 돌아가기", key="b2"):
         st.session_state['page'] = 'home'
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
@@ -254,18 +238,29 @@ elif st.session_state['page'] == 'detect':
     st.write("센서로 보행 중 주변 위험 요소를 실시간 감지합니다.")
     st.divider()
 
-    if st.button("⚡ 실시간 감지 스캔"):
-        st.success("✅ 주변 레이더 센서 정상 작동 중!")
+    if st.button("실시간 감지 스캔", key="scan_btn"):
+        st.success("주변 레이더 센서 정상 작동 중!")
 
     st.write("")
     c1, c2 = st.columns(2)
     with c1:
-        st.warning("⚠️ **전방 감지**\n\n전방 1.5m 지점에 문턱이 있습니다. 주의하세요!")
+        st.warning("전방 감지: 전방 1.5m 지점에 문턱이 있습니다. 주의하세요!")
     with c2:
-        st.info("✅ **측면 감지**\n\n좌/우측 도로가 안전합니다.")
+        st.info("측면 감지: 좌/우측 도로가 안전합니다.")
 
 
 # --- [화면 4: 안전한 길 안내] ---
 elif st.session_state['page'] == 'path':
     st.markdown('<div class="back-btn">', unsafe_allow_html=True)
-    if st.button("👈 메인으로 돌아가기", key="back_
+    if st.button("메인으로 돌아가기", key="b3"):
+        st.session_state['page'] = 'home'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.title("🗺️ 안전한 길 안내 서비스")
+    st.write("계단이나 경사가 없는 안전한 보행 경로를 안내합니다.")
+    st.divider()
+
+    dest = st.text_input("목적지 입력:", "경로당")
+    if st.button("안전 경로 탐색", key="find_btn"):
+        st.success(f"'{dest}'(으
