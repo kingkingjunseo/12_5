@@ -2,22 +2,19 @@
 import streamlit as st
 import requests
 import folium
+import streamlit.components.v1 as components
 
 from streamlit_folium import st_folium
 from streamlit_geolocation import streamlit_geolocation
 
-# =========================
 # 1. 페이지 설정
-# =========================
 st.set_page_config(
     page_title="안전 동행",
     page_icon="🌼",
     layout="wide",
 )
 
-# =========================
-# 2. 디자인
-# =========================
+# 2. 따뜻하고 둥근 디자인
 st.markdown("""
 <style>
 .stApp {
@@ -42,7 +39,6 @@ div.stButton > button {
 }
 div.stButton > button:hover {
     background-color: #EBD0B0;
-    border-color: #D9B58E;
 }
 div[data-testid="stAlert"] {
     border-radius: 16px;
@@ -51,20 +47,19 @@ div[data-testid="stAlert"] {
 """, unsafe_allow_html=True)
 
 st.title("🌼 안전 동행")
-st.markdown("""
-안녕하세요! 오늘도 안전하게 걸어요.  
-현재 위치를 확인하고 주변의 보행 주의 정보를 찾아볼게요.
-""")
+st.markdown("오늘도 안전하게 걸어요! 주변의 보행 주의 정보를 확인해 보세요.")
 
-# =========================
-# 3. 현재 위치 가져오기
-# =========================
-st.subheader("📍 내 현재 위치")
+# 3. 현재 위치 확인
+st.subheader("📍 현재 위치 확인")
 
 location = streamlit_geolocation()
 
 if not isinstance(location, dict):
-    st.info("위치 확인 버튼을 누르고 위치 권한을 허용해 주세요.")
+    st.info("위치 확인 버튼을 누르고 브라우저의 위치 권한을 허용해 주세요.")
+    st.stop()
+
+if location.get("error"):
+    st.error(str(location["error"]))
     st.stop()
 
 latitude = location.get("latitude")
@@ -72,7 +67,7 @@ longitude = location.get("longitude")
 accuracy = location.get("accuracy")
 
 if latitude is None or longitude is None:
-    st.warning("위치 정보가 없습니다. 위치 확인 버튼을 다시 눌러 주세요.")
+    st.warning("위치 정보가 아직 없습니다. 위치 확인 버튼을 다시 눌러 주세요.")
     st.stop()
 
 try:
@@ -80,29 +75,26 @@ try:
     longitude = float(longitude)
     accuracy = float(accuracy) if accuracy is not None else None
 except (ValueError, TypeError):
-    st.error("위치 좌표를 읽을 수 없습니다. 다시 시도해 주세요.")
+    st.error("위치 좌표를 읽을 수 없습니다.")
     st.stop()
 
 if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
-    st.error("잘못된 위치 좌표가 전달되었습니다.")
+    st.error("잘못된 위치 좌표입니다.")
     st.stop()
 
 st.write(f"**위도:** {latitude:.6f}")
 st.write(f"**경도:** {longitude:.6f}")
 
-if accuracy is None:
-    st.warning("위치 정확도를 확인할 수 없습니다.")
-elif accuracy > 200:
-    st.warning(
-        f"위치 오차가 약 ±{accuracy:.0f}m입니다. "
-        "주변 정보가 부정확할 수 있으니 위치 권한과 기기 설정을 확인해 주세요."
-    )
+if accuracy is not None:
+    st.write(f"**표시된 위치 정확도:** 약 ±{accuracy:.0f}m")
+    if accuracy > 200:
+        st.warning("위치가 부정확할 수 있습니다. 기기 위치 설정을 확인해 주세요.")
 else:
-    st.success(f"위치를 받았습니다. 표시된 정확도는 약 ±{accuracy:.0f}m입니다.")
+    st.warning("기기에서 위치 정확도 정보를 받지 못했습니다.")
 
-# =========================
+current_coords = (round(latitude, 5), round(longitude, 5))
+
 # 4. 주변 보행 주의 정보 검색
-# =========================
 @st.cache_data(ttl=180)
 def search_hazards(lat, lon):
     query = f"""
@@ -181,7 +173,7 @@ def search_hazards(lat, lon):
         except (requests.RequestException, ValueError) as error:
             errors.append(str(error))
 
-    return [], "주변 정보 서버에 연결하지 못했습니다: " + " / ".join(errors)
+    return [], "주변 정보 서버 연결 실패: " + " / ".join(errors)
 
 
 st.subheader("🚧 주변 500m 보행 주의 정보")
@@ -190,9 +182,7 @@ if st.button("🔎 주변 주의 정보 검색", use_container_width=True):
     if accuracy is not None and accuracy > 200:
         st.session_state["hazards"] = []
         st.session_state["hazard_error"] = "위치 정확도가 낮습니다."
-        st.session_state["searched_coords"] = (
-            round(latitude, 5), round(longitude, 5)
-        )
+        st.session_state["searched_coords"] = current_coords
     else:
         with st.spinner("주변 정보를 검색하고 있어요..."):
             hazards, error = search_hazards(
@@ -202,23 +192,18 @@ if st.button("🔎 주변 주의 정보 검색", use_container_width=True):
 
         st.session_state["hazards"] = hazards
         st.session_state["hazard_error"] = error
-        st.session_state["searched_coords"] = (
-            round(latitude, 5), round(longitude, 5)
-        )
+        st.session_state["searched_coords"] = current_coords
 
-# =========================
-# 5. 지도 표시
-# =========================
-st.subheader("🗺️ 내 주변 지도")
-
-current_coords = (round(latitude, 5), round(longitude, 5))
-
+# 현재 좌표가 바뀌면 이전 위치의 위험 정보는 숨김
 if st.session_state.get("searched_coords") != current_coords:
     hazards = []
     search_error = None
 else:
     hazards = st.session_state.get("hazards", [])
     search_error = st.session_state.get("hazard_error")
+
+# 5. 지도 표시
+st.subheader("🗺️ 내 주변 지도")
 
 map_view = folium.Map(
     location=[latitude, longitude],
@@ -228,7 +213,7 @@ map_view = folium.Map(
 
 folium.Marker(
     [latitude, longitude],
-    tooltip="내 현재 위치",
+    tooltip="현재 위치",
     popup=f"위도: {latitude:.6f}, 경도: {longitude:.6f}",
     icon=folium.Icon(color="blue", icon="user", prefix="fa"),
 ).add_to(map_view)
@@ -263,9 +248,7 @@ st_folium(
 
 st.caption("🔵 파란색: 현재 위치 · 🔴 빨간색: 검색된 주의 정보")
 
-# =========================
-# 6. 경보
-# =========================
+# 6. 위험 경고 및 경보음
 if search_error:
     st.error(search_error)
 
@@ -276,10 +259,8 @@ elif st.session_state.get("searched_coords") == current_coords:
         for hazard in hazards:
             st.warning(f"⚠️ {hazard['kind']} — {hazard['name']}")
 
-        st.markdown("### 🔔 경보음")
-
-        if st.button("🔊 경보음 재생", use_container_width=True):
-            components_code = """
+        if st.button("🔔 경보음 재생", use_container_width=True):
+            components.html("""
             <script>
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             ctx.resume().then(() => {
@@ -296,8 +277,7 @@ elif st.session_state.get("searched_coords") == current_coords:
               }
             });
             </script>
-            """
-            st.components.v1.html(components_code, height=0)
+            """, height=0)
 
     else:
         st.success("검색 조건에 맞는 주의 정보를 찾지 못했습니다.")
@@ -306,5 +286,5 @@ elif st.session_state.get("searched_coords") == current_coords:
 st.divider()
 st.caption(
     "🌷 안전 동행은 보행 보조용 시제품입니다. "
-    "지도 데이터에 등록되지 않은 위험이나 실시간 장애물을 감지하지 못합니다."
+    "등록되지 않은 위험이나 실시간 장애물을 모두 감지하지는 못합니다."
 )
