@@ -9,6 +9,7 @@ streamlit-folium>=0.20.0
 streamlit-geolocation
 av
 
+
 streamlit
 requests
 folium
