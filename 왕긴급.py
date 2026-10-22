@@ -118,7 +118,7 @@ with cols[1]:
     st.markdown('<div class="card-box bg-yellow"><div class="card-icon">📡</div><div class="card-title title-yellow">주변 위험 감지</div><div class="card-desc">주변 장애물을 센서를 통해 감지해서 안전을 지켜요</div></div>', unsafe_allow_html=True)
     if st.button("위험 확인 바로가기", key="btn_detect"):
         try:
-            st.switch_page("pages/2_ 안전한 길 안내.py")  # 👈 실제 파일명으로 수정해 주세요!
+            st.switch_page("pages/2_안전한 길 안내.py")  # 👈 실제 파일명으로 수정해 주세요!
         except Exception:
             st.error("pages/2_감지.py 파일 경로를 찾을 수 없습니다. GitHub의 pages/ 폴더 안 파일명을 확인해 주세요!")
 
@@ -127,7 +127,7 @@ with cols[2]:
     st.markdown('<div class="card-box bg-blue"><div class="card-icon">🗺️</div><div class="card-title title-blue">안전한 길 안내</div><div class="card-desc">안전한 길로만 안내하여 안전한 보행을 도와요</div></div>', unsafe_allow_html=True)
     if st.button("길 안내 바로가기", key="btn_path"):
         try:
-            st.switch_page("pages/3_ 자동 긴급 전화.py")  # 👈 실제 파일명으로 수정해 주세요!
+            st.switch_page("pages/3_자동 긴급 전화.py")  # 👈 실제 파일명으로 수정해 주세요!
         except Exception:
             st.error("pages/3_길안내.py 파일 경로를 찾을 수 없습니다. GitHub의 pages/ 폴더 안 파일명을 확인해 주세요!")
 
