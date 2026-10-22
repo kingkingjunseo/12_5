@@ -10,32 +10,43 @@ import folium
 from streamlit_folium import st_folium
 
 
+# -----------------------------
+# 기본 설정
+# -----------------------------
 st.set_page_config(
     page_title="안전 동행",
     page_icon="🚶",
     layout="wide",
 )
 
-# 공개 Overpass API 서버를 순서대로 시도
-SERVERS = [
+SCHOOL_NAME = "천안오성고등학교"
+SCHOOL_ADDRESS = "충남 천안시 서북구 과수원길 27"
+
+# 천안오성고등학교 고정 좌표
+SCHOOL_LAT = 36.84152810
+SCHOOL_LON = 127.14213325
+
+OVERPASS_SERVERS = [
     "https://overpass.private.coffee/api/interpreter",
     "https://overpass-api.de/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
 
-DEFAULT_LAT = 37.5665
-DEFAULT_LON = 126.9780
 
-
-def search_hazards(lat, lon, radius):
+# -----------------------------
+# 주변 위험 데이터 조회
+# -----------------------------
+@st.cache_data(ttl=180, show_spinner=False)
+def fetch_hazards(lat, lon, radius):
     query = f"""
-    [out:json][timeout:20];
+    [out:json][timeout:25];
     (
       nwr(around:{radius},{lat},{lon})["highway"="construction"];
       nwr(around:{radius},{lat},{lon})["construction"];
       nwr(around:{radius},{lat},{lon})["barrier"="construction"];
       nwr(around:{radius},{lat},{lon})["highway"="steps"];
       nwr(around:{radius},{lat},{lon})["natural"="cliff"];
+      nwr(around:{radius},{lat},{lon})["barrier"="cliff"];
       nwr(around:{radius},{lat},{lon})["hazard"];
       way(around:{radius},{lat},{lon})["incline"];
       way(around:{radius},{lat},{lon})
@@ -47,57 +58,52 @@ def search_hazards(lat, lon, radius):
 
     errors = []
 
-    for server in SERVERS:
+    for server in OVERPASS_SERVERS:
         try:
             response = requests.post(
                 server,
                 data={"data": query},
+                timeout=(8, 35),
                 headers={
-                    "User-Agent": "SafeCompanion/1.0"
+                    "User-Agent": "SafetyCompanion/1.0"
                 },
-                timeout=(8, 30),
             )
 
             if response.status_code != 200:
                 errors.append(
-                    f"{server}: HTTP {response.status_code}"
+                    f"{server} → HTTP {response.status_code}"
                 )
                 continue
 
             try:
-                data = response.json()
+                payload = response.json()
             except ValueError:
-                errors.append(f"{server}: JSON 응답 오류")
+                errors.append(f"{server} → JSON 응답 오류")
                 continue
 
-            if not isinstance(data.get("elements"), list):
-                errors.append(f"{server}: 예상하지 못한 응답")
+            if not isinstance(payload.get("elements"), list):
+                errors.append(f"{server} → 응답 데이터 형식 오류")
                 continue
 
-            return data["elements"], errors
+            return payload["elements"]
 
         except requests.Timeout:
-            errors.append(f"{server}: 시간 초과")
+            errors.append(f"{server} → 연결 시간 초과")
         except requests.RequestException as exc:
             errors.append(
-                f"{server}: {type(exc).__name__}: {exc}"
+                f"{server} → {type(exc).__name__}: {exc}"
             )
 
-    raise RuntimeError("\n".join(errors))
+    raise RuntimeError(
+        "모든 지도 데이터 서버에 연결하지 못했습니다.\n\n"
+        + "\n".join(errors)
+    )
 
 
-def coordinates(item):
-    if "lat" in item and "lon" in item:
-        return item["lat"], item["lon"]
-
-    center = item.get("center", {})
-    if "lat" in center and "lon" in center:
-        return center["lat"], center["lon"]
-
-    return None
-
-
-def hazard_type(tags):
+# -----------------------------
+# 위험 종류 분류
+# -----------------------------
+def classify_hazard(tags):
     if (
         tags.get("highway") == "construction"
         or "construction" in tags
@@ -108,7 +114,10 @@ def hazard_type(tags):
     if tags.get("highway") == "steps":
         return "계단"
 
-    if tags.get("natural") == "cliff":
+    if (
+        tags.get("natural") == "cliff"
+        or tags.get("barrier") == "cliff"
+    ):
         return "절벽"
 
     if tags.get("hazard"):
@@ -123,196 +132,251 @@ def hazard_type(tags):
     return "주의 구간"
 
 
-def beep_audio():
-    rate = 22050
+def get_coordinates(item):
+    if "lat" in item and "lon" in item:
+        return item["lat"], item["lon"]
+
+    center = item.get("center", {})
+    if "lat" in center and "lon" in center:
+        return center["lat"], center["lon"]
+
+    return None
+
+
+# -----------------------------
+# 경고음 생성
+# -----------------------------
+def create_warning_sound():
+    sample_rate = 22050
     output = io.BytesIO()
+    frames = bytearray()
+
+    # 두 번의 짧은 경고음
+    for frequency, duration in [(880, 0.25), (660, 0.25)]:
+        count = int(sample_rate * duration)
+
+        for i in range(count):
+            value = int(
+                10000
+                * math.sin(2 * math.pi * frequency * i / sample_rate)
+            )
+            frames.extend(struct.pack("<h", value))
 
     with wave.open(output, "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
-        wav.setframerate(rate)
-
-        frames = bytearray()
-        for i in range(int(rate * 0.4)):
-            value = int(
-                9000 * math.sin(2 * math.pi * 880 * i / rate)
-            )
-            frames.extend(struct.pack("<h", value))
-
+        wav.setframerate(sample_rate)
         wav.writeframes(frames)
 
     return output.getvalue()
 
 
+# -----------------------------
+# 화면
+# -----------------------------
 st.title("🚶 안전 동행")
 st.subheader("어르신을 위한 주변 보행 안전 지도")
-st.write(
-    "주변의 공사 구간, 계단, 절벽, 경사 및 노면 상태 관련 "
-    "지도 정보를 검색합니다."
+
+st.markdown(
+    """
+    공사 구간, 계단, 절벽, 경사 및 노면 상태와 관련된
+    주변 지도 정보를 확인할 수 있습니다.
+    """
+)
+
+st.info(
+    f"📍 탐색 기준 위치: **{SCHOOL_NAME}**\n\n"
+    f"주소: {SCHOOL_ADDRESS}\n\n"
+    "위치는 학교로 고정되어 있으며 실제 GPS 위치를 추적하지 않습니다."
 )
 
 with st.sidebar:
-    st.header("📍 위치 설정")
+    st.header("🗺️ 탐색 설정")
 
-    lat = st.number_input(
-        "위도", min_value=-90.0, max_value=90.0,
-        value=DEFAULT_LAT, format="%.6f",
-    )
-    lon = st.number_input(
-        "경도", min_value=-180.0, max_value=180.0,
-        value=DEFAULT_LON, format="%.6f",
-    )
     radius = st.slider(
-        "탐색 반경 (m)", 100, 2000, 500, 100
+        "주변 탐색 거리",
+        min_value=200,
+        max_value=2000,
+        value=1000,
+        step=200,
+        format="%d m",
     )
 
     search_button = st.button(
-        "주변 위험 요소 찾기",
+        "🔎 주변 위험 요소 찾기",
         type="primary",
         use_container_width=True,
     )
 
     st.caption(
-        "초기 위치는 서울의 예시 좌표입니다. "
-        "GPS 자동 추적이 아니므로 실제 위치에 맞게 수정하세요."
+        "위험 정보는 공개 지도 데이터에 등록된 내용만 검색합니다."
     )
 
-if "results" not in st.session_state:
-    st.session_state.results = None
-if "error" not in st.session_state:
-    st.session_state.error = None
-if "search_params" not in st.session_state:
-    st.session_state.search_params = None
 
-params = (lat, lon, radius)
+# 최초 실행 시 검색하고, 버튼을 누르면 다시 검색
+if "hazards" not in st.session_state:
+    st.session_state.hazards = None
+
+if "search_error" not in st.session_state:
+    st.session_state.search_error = None
+
+if "last_radius" not in st.session_state:
+    st.session_state.last_radius = None
 
 if (
-    search_button
-    or st.session_state.search_params != params
-):
-    st.session_state.results = None
-    st.session_state.error = None
+    st.session_state.hazards is None
+    and st.session_state.search_error is None
+) or search_button or st.session_state.last_radius != radius:
 
-    with st.spinner("주변 지도 데이터를 검색하고 있습니다..."):
+    st.session_state.hazards = None
+    st.session_state.search_error = None
+    st.session_state.last_radius = radius
+
+    with st.spinner("주변 위험 정보를 조회하고 있습니다..."):
         try:
-            results, server_errors = search_hazards(
-                float(lat), float(lon), int(radius)
+            st.session_state.hazards = fetch_hazards(
+                SCHOOL_LAT,
+                SCHOOL_LON,
+                radius,
             )
-            st.session_state.results = results
-            st.session_state.search_params = params
+        except Exception as exc:
+            st.session_state.search_error = str(exc)
 
-            if server_errors:
-                st.info(
-                    "일부 서버에는 연결할 수 없었지만 "
-                    "다른 서버에서 응답을 받았습니다."
-                )
 
-        except RuntimeError as exc:
-            st.session_state.error = str(exc)
-            st.session_state.search_params = params
-
-# 위험 데이터 조회가 실패해도 지도는 표시
-map_obj = folium.Map(
-    location=[lat, lon],
+# 지도 생성: 데이터 검색 실패와 관계없이 표시
+map_view = folium.Map(
+    location=[SCHOOL_LAT, SCHOOL_LON],
     zoom_start=16,
     tiles="OpenStreetMap",
 )
 
 folium.Marker(
-    [lat, lon],
-    tooltip="설정한 기준 위치",
-    popup="입력한 기준 위치 (실제 GPS 위치와 다를 수 있음)",
-    icon=folium.Icon(color="blue", icon="info-sign"),
-).add_to(map_obj)
+    [SCHOOL_LAT, SCHOOL_LON],
+    tooltip=SCHOOL_NAME,
+    popup=f"{SCHOOL_NAME}<br>{SCHOOL_ADDRESS}",
+    icon=folium.Icon(color="blue", icon="home"),
+).add_to(map_view)
 
 folium.Circle(
-    [lat, lon],
+    location=[SCHOOL_LAT, SCHOOL_LON],
     radius=radius,
     color="blue",
     fill=True,
-    fill_opacity=0.05,
-).add_to(map_obj)
+    fill_opacity=0.06,
+    tooltip=f"탐색 반경 {radius}m",
+).add_to(map_view)
 
+
+# 검색 결과를 지도에 표시
 hazards = []
 
-if st.session_state.results is not None:
-    for item in st.session_state.results:
-        point = coordinates(item)
+if st.session_state.hazards is not None:
+    for item in st.session_state.hazards:
+        point = get_coordinates(item)
+
         if point is None:
             continue
 
         tags = item.get("tags", {})
+
         hazards.append({
             "lat": point[0],
             "lon": point[1],
-            "type": hazard_type(tags),
-            "name": tags.get("name", "이름 없는 지점"),
+            "type": classify_hazard(tags),
+            "name": tags.get("name", "이름 없는 위험 지점"),
             "tags": tags,
         })
 
-for item in hazards:
-    folium.Marker(
-        [item["lat"], item["lon"]],
-        tooltip=f"⚠️ {item['type']}",
-        popup=(
-            f"위험 종류: {item['type']}<br>"
-            f"이름: {item['name']}"
-        ),
-        icon=folium.Icon(color="red", icon="warning-sign"),
-    ).add_to(map_obj)
-
-left, right = st.columns([2, 1])
-
-with left:
-    st.subheader("🗺️ 주변 위험 지도")
-    st_folium(
-        map_obj,
-        use_container_width=True,
-        height=520,
-        key="safety_map",
+for hazard in hazards:
+    popup_text = (
+        f"위험 종류: {hazard['type']}<br>"
+        f"이름: {hazard['name']}"
     )
 
-with right:
-    st.subheader("🚨 검색 결과")
+    folium.Marker(
+        [hazard["lat"], hazard["lon"]],
+        tooltip=f"🔴 {hazard['type']}",
+        popup=popup_text,
+        icon=folium.Icon(
+            color="red",
+            icon="warning-sign",
+        ),
+    ).add_to(map_view)
 
-    if st.session_state.error:
+
+# 화면 배치
+map_column, result_column = st.columns([2, 1])
+
+with map_column:
+    st.markdown("### 🗺️ 주변 위험 지도")
+
+    st_folium(
+        map_view,
+        use_container_width=True,
+        height=520,
+        key="fixed_school_safety_map",
+    )
+
+with result_column:
+    st.markdown("### 🚨 위험 감지 결과")
+
+    if st.session_state.search_error:
         st.error("위험 데이터를 불러오지 못했습니다.")
-        st.code(st.session_state.error)
-        st.info(
-            "위 오류는 연결할 수 없었던 서버와 응답 상태를 보여줍니다. "
-            "잠시 후 다시 시도해 주세요."
+
+        with st.expander("오류 원인 확인", expanded=True):
+            st.code(st.session_state.search_error)
+
+        st.caption(
+            "인터넷 연결 또는 공개 데이터 서버 상태를 확인한 후 "
+            "다시 검색해 주세요."
         )
 
-    elif st.session_state.results is None:
-        st.info("위치를 설정하고 검색 버튼을 눌러 주세요.")
+    elif st.session_state.hazards is None:
+        st.info("위험 정보를 검색해 주세요.")
 
     elif hazards:
-        st.metric("발견한 지도 객체", len(hazards))
+        st.metric("검색된 위험 지점", len(hazards))
+
         st.warning(
-            "위험 관련 지도 정보가 발견되었습니다. "
-            "실제 현장 상황도 반드시 확인하세요."
+            "주변에 위험 관련 지도 정보가 있습니다. "
+            "이동 전 현장을 확인하세요."
         )
 
-        if st.button("🔊 경고음 재생", use_container_width=True):
-            st.audio(beep_audio(), format="audio/wav")
+        if st.button(
+            "🔊 경고음 재생",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.audio(
+                create_warning_sound(),
+                format="audio/wav",
+                autoplay=True,
+            )
 
-        for i, item in enumerate(hazards, 1):
-            with st.expander(f"🔴 {i}. {item['type']}"):
-                st.write(item["name"])
+        for index, hazard in enumerate(hazards, start=1):
+            with st.expander(
+                f"🔴 {index}. {hazard['type']}"
+            ):
+                st.write(hazard["name"])
                 st.caption(
-                    f"{item['lat']:.5f}, {item['lon']:.5f}"
+                    f"위도: {hazard['lat']:.6f}\n\n"
+                    f"경도: {hazard['lon']:.6f}"
                 )
-                st.json(item["tags"])
+
+                if hazard["tags"]:
+                    st.json(hazard["tags"])
 
     else:
-        st.success("검색된 위험 관련 지도 정보가 없습니다.")
+        st.success("등록된 위험 관련 지도 정보를 찾지 못했습니다.")
         st.caption(
-            "이것은 주변에 위험이 없다는 의미가 아닙니다. "
+            "주변에 실제 위험이 없다는 뜻은 아닙니다. "
             "지도에 등록되지 않은 위험 요소가 있을 수 있습니다."
         )
 
 st.divider()
+
 st.caption(
-    "지도: OpenStreetMap | 위험 정보: 공개 Overpass API "
-    "| 정보 누락이나 지연이 있을 수 있으며 안전을 보장하지 않습니다."
+    "지도 출처: OpenStreetMap | 위험 데이터: Overpass API. "
+    "데이터가 누락되거나 오래되었을 수 있습니다. "
+    "이 앱은 실시간 현장 감지나 안전을 보장하지 않습니다."
 )
