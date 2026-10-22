@@ -86,7 +86,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 🌟 상단 천사 마스코트 캐릭터 로드
+# 페이지 파일 위치 안전 탐색 및 이동 함수
+def safe_switch_page(candidates):
+    for path in candidates:
+        try:
+            st.switch_page(path)
+            return True
+        except Exception:
+            continue
+    return False
+
+# 상단 마스코트 캐릭터 로드
 found_image = None
 for file in os.listdir('.'):
     if file.lower().endswith(('.png', '.jpg', '.jpeg')):
@@ -104,41 +114,29 @@ st.markdown('<div style="text-align:center; font-size:1.3em; font-weight:800; co
 
 cols = st.columns(3)
 
-# 1. 자동 긴급 전화 (실제 파일: 'pages/자동 긴급 전화.py' 또는 '자동 긴급 전화.py')
+# 1. 자동 긴급 전화
 with cols[0]:
     st.markdown('<div class="card-box bg-pink"><div class="card-icon">📞</div><div class="card-title title-pink">자동 긴급 전화</div><div class="card-desc">긴급상황 시 보호자와 구조대에게 바로 신고해요</div></div>', unsafe_allow_html=True)
     if st.button("긴급 신고 바로가기", key="btn_call"):
-        try:
-            st.switch_page("pages/자동 긴급 전화.py")
-        except Exception:
-            try:
-                st.switch_page("자동 긴급 전화.py")
-            except Exception as e:
-                st.error("파일 연결 실패: " + str(e))
+        paths = ["pages/자동 긴급 전화.py", "자동 긴급 전화.py", "pages/1_전화.py"]
+        if not safe_switch_page(paths):
+            st.error("전화 페이지 파일 경로를 찾을 수 없습니다. GitHub에서 파일 위치를 확인해 주세요.")
 
-# 2. 주변 위험 감지 (실제 파일: 'pages.주변감지경보.py' 또는 'pages/주변감지경보.py')
+# 2. 주변 위험 감지
 with cols[1]:
     st.markdown('<div class="card-box bg-yellow"><div class="card-icon">📡</div><div class="card-title title-yellow">주변 위험 감지</div><div class="card-desc">주변 장애물을 센서를 통해 감지해서 안전을 지켜요</div></div>', unsafe_allow_html=True)
     if st.button("위험 확인 바로가기", key="btn_detect"):
-        try:
-            st.switch_page("pages.주변감지경보.py")
-        except Exception:
-            try:
-                st.switch_page("pages/주변감지경보.py")
-            except Exception as e:
-                st.error("파일 연결 실패: " + str(e))
+        paths = ["pages/주변감지경보.py", "pages.주변감지경보.py", "주변감지경보.py", "pages/2_감지.py"]
+        if not safe_switch_page(paths):
+            st.error("위험 감지 페이지 파일 경로를 찾을 수 없습니다. GitHub에서 파일 위치를 확인해 주세요.")
 
-# 3. 안전한 길 안내 (실제 파일: 'pages/안전한 길 안내.py' 또는 '안전한 길 안내.py')
+# 3. 안전한 길 안내
 with cols[2]:
     st.markdown('<div class="card-box bg-blue"><div class="card-icon">🗺️</div><div class="card-title title-blue">안전한 길 안내</div><div class="card-desc">안전한 길로만 안내하여 안전한 보행을 도와요</div></div>', unsafe_allow_html=True)
     if st.button("길 안내 바로가기", key="btn_path"):
-        try:
-            st.switch_page("pages/안전한 길 안내.py")
-        except Exception:
-            try:
-                st.switch_page("안전한 길 안내.py")
-            except Exception as e:
-                st.error("파일 연결 실패: " + str(e))
+        paths = ["pages/안전한 길 안내.py", "안전한 길 안내.py", "pages/3_길안내.py"]
+        if not safe_switch_page(paths):
+            st.error("길 안내 페이지 파일 경로를 찾을 수 없습니다. GitHub에서 파일 위치를 확인해 주세요.")
 
 st.divider()
 st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
