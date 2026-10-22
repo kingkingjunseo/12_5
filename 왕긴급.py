@@ -6,10 +6,14 @@ st.set_page_config(
     page_title="왕긴급!",
     page_icon="🚨",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# 2. 파스텔톤 커스텀 CSS
+# 2. 세션 상태로 화면 위치 관리
+if 'page' not in st.session_state:
+    st.session_state['page'] = 'home'
+
+# 3. 파스텔톤 CSS
 st.markdown("""
 <style>
     .stApp {
@@ -39,22 +43,9 @@ st.markdown("""
         margin-bottom: 12px;
         border: 4px solid #ffffff;
     }
-    .card-icon {
-        font-size: 4em;
-        margin-bottom: 8px;
-    }
-    .card-title {
-        font-size: 1.8em;
-        font-weight: 800;
-        margin-bottom: 10px;
-    }
-    .card-desc {
-        font-size: 1.05em;
-        color: #555;
-        min-height: 50px;
-        line-height: 1.4;
-        font-weight: 600;
-    }
+    .card-icon { font-size: 4em; margin-bottom: 8px; }
+    .card-title { font-size: 1.8em; font-weight: 800; margin-bottom: 10px; }
+    .card-desc { font-size: 1.05em; color: #555; min-height: 50px; line-height: 1.4; font-weight: 600; }
     .bg-pink { background-color: #fff0f3; }
     .title-pink { color: #ff4757; }
     .bg-yellow { background-color: #fff9db; }
@@ -71,72 +62,122 @@ st.markdown("""
         border: 3px solid #ffffff !important;
         box-shadow: 0 6px 12px rgba(0,0,0,0.08) !important;
     }
-    div[data-testid="column"]:nth-child(1) div.stButton > button {
-        background-color: #ff6b81 !important;
+    div[data-testid="column"]:nth-child(1) div.stButton > button { background-color: #ff6b81 !important; color: white !important; }
+    div[data-testid="column"]:nth-child(2) div.stButton > button { background-color: #eccc68 !important; color: white !important; }
+    div[data-testid="column"]:nth-child(3) div.stButton > button { background-color: #70a1ff !important; color: white !important; }
+    .back-btn div.stButton > button {
+        background-color: #a4b0be !important;
         color: white !important;
+        width: auto !important;
+        padding: 8px 25px !important;
+        font-size: 1em !important;
+        margin-bottom: 15px;
     }
-    div[data-testid="column"]:nth-child(2) div.stButton > button {
-        background-color: #eccc68 !important;
-        color: white !important;
-    }
-    div[data-testid="column"]:nth-child(3) div.stButton > button {
-        background-color: #70a1ff !important;
-        color: white !important;
+    .mock-map {
+        border: 3px dashed #70a1ff;
+        border-radius: 20px;
+        background-color: #ffffff;
+        padding: 25px;
+        text-align: center;
+        color: #3742fa;
+        font-weight: bold;
+        font-size: 1.2em;
+        margin-top: 15px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# 페이지 파일 위치 안전 탐색 및 이동 함수
-def safe_switch_page(candidates):
-    for path in candidates:
-        try:
-            st.switch_page(path)
-            return True
-        except Exception:
-            continue
-    return False
+# 메인 홈 화면
+if st.session_state['page'] == 'home':
+    found_image = None
+    for file in os.listdir('.'):
+        if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+            found_image = file
+            break
 
-# 상단 마스코트 캐릭터 로드
-found_image = None
-for file in os.listdir('.'):
-    if file.lower().endswith(('.png', '.jpg', '.jpeg')):
-        found_image = file
-        break
+    if found_image:
+        col_l, col_c, col_r = st.columns([1, 2, 1])
+        with col_c:
+            st.image(found_image, use_container_width=True)
+    else:
+        st.markdown('<div class="title-banner"><div class="main-title">BIG-GINGEUP!!</div></div>', unsafe_allow_html=True)
 
-if found_image:
-    col_l, col_c, col_r = st.columns([1, 2, 1])
-    with col_c:
-        st.image(found_image, use_container_width=True)
-else:
-    st.markdown('<div class="title-banner"><div class="main-title">BIG-GINGEUP!!</div></div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center; font-size:1.3em; font-weight:800; color:#57606f; margin-top:-5px; margin-bottom:20px;">언제 어디서나 왕긴급한 일에 대비하기 위해선<br><span style="color:#ff4757; font-size:1.2em;">왕 긴 급!</span></div>', unsafe_allow_html=True)
 
-st.markdown('<div style="text-align:center; font-size:1.3em; font-weight:800; color:#57606f; margin-top:-5px; margin-bottom:20px;">언제 어디서나 왕긴급한 일에 대비하기 위해선<br><span style="color:#ff4757; font-size:1.2em;">왕 긴 급!</span></div>', unsafe_allow_html=True)
+    cols = st.columns(3)
+    with cols[0]:
+        st.markdown('<div class="card-box bg-pink"><div class="card-icon">📞</div><div class="card-title title-pink">자동 긴급 전화</div><div class="card-desc">긴급상황 시 보호자와 구조대에게 바로 신고해요</div></div>', unsafe_allow_html=True)
+        if st.button("긴급 신고 바로가기", key="btn_call"):
+            st.session_state['page'] = 'call'
+            st.rerun()
 
-cols = st.columns(3)
+    with cols[1]:
+        st.markdown('<div class="card-box bg-yellow"><div class="card-icon">📡</div><div class="card-title title-yellow">주변 위험 감지</div><div class="card-desc">주변 장애물을 센서를 통해 감지해서 안전을 지켜요</div></div>', unsafe_allow_html=True)
+        if st.button("위험 확인 바로가기", key="btn_detect"):
+            st.session_state['page'] = 'detect'
+            st.rerun()
 
-# 1. 자동 긴급 전화
-with cols[0]:
-    st.markdown('<div class="card-box bg-pink"><div class="card-icon">📞</div><div class="card-title title-pink">자동 긴급 전화</div><div class="card-desc">긴급상황 시 보호자와 구조대에게 바로 신고해요</div></div>', unsafe_allow_html=True)
-    if st.button("긴급 신고 바로가기", key="btn_call"):
-        paths = ["pages/자동 긴급 전화.py", "자동 긴급 전화.py", "pages/1_전화.py"]
-        if not safe_switch_page(paths):
-            st.error("전화 페이지 파일 경로를 찾을 수 없습니다. GitHub에서 파일 위치를 확인해 주세요.")
+    with cols[2]:
+        st.markdown('<div class="card-box bg-blue"><div class="card-icon">🗺️</div><div class="card-title title-blue">안전한 길 안내</div><div class="card-desc">안전한 길로만 안내하여 안전한 보행을 도와요</div></div>', unsafe_allow_html=True)
+        if st.button("길 안내 바로가기", key="btn_path"):
+            st.session_state['page'] = 'path'
+            st.rerun()
 
-# 2. 주변 위험 감지
-with cols[1]:
-    st.markdown('<div class="card-box bg-yellow"><div class="card-icon">📡</div><div class="card-title title-yellow">주변 위험 감지</div><div class="card-desc">주변 장애물을 센서를 통해 감지해서 안전을 지켜요</div></div>', unsafe_allow_html=True)
-    if st.button("위험 확인 바로가기", key="btn_detect"):
-        paths = ["pages/주변감지경보.py", "pages.주변감지경보.py", "주변감지경보.py", "pages/2_감지.py"]
-        if not safe_switch_page(paths):
-            st.error("위험 감지 페이지 파일 경로를 찾을 수 없습니다. GitHub에서 파일 위치를 확인해 주세요.")
+    st.divider()
+    st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
 
-# 3. 안전한 길 안내
-with cols[2]:
-    st.markdown('<div class="card-box bg-blue"><div class="card-icon">🗺️</div><div class="card-title title-blue">안전한 길 안내</div><div class="card-desc">안전한 길로만 안내하여 안전한 보행을 도와요</div></div>', unsafe_allow_html=True)
-    if st.button("길 안내 바로가기", key="btn_path"):
-        paths = ["pages/안전한 길 안내.py", "안전한 길 안내.py", "pages/3_길안내.py"]
-        if not safe_switch_page(paths):
-            st.error("길 안내 페이지 파일 경로를 찾을 수 없습니다. GitHub에서 파일 위치를 확인해 주세요.")
+# 긴급 전화 화면
+elif st.session_state['page'] == 'call':
+    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
+    if st.button("👈 메인 홈으로 돌아가기", key="b1"):
+        st.session_state['page'] = 'home'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-st.divider()
-st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
+    st.title("📞 자동 긴급 전화 서비스")
+    st.write("긴급 상황 시 버튼 한 번으로 도움을 요청하세요.")
+    st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.error("### 🚑 119 긴급 구조대")
+        st.write("클릭 시 119로 즉시 전화가 연결됩니다.")
+        st.markdown('<a href="tel:119" style="display:inline-block; background-color:#ff4757; color:white; padding:16px 30px; border-radius:18px; font-size:1.3em; font-weight:bold; text-decoration:none;">119 바로 전화걸기</a>', unsafe_allow_html=True)
+
+    with col2:
+        st.warning("### 👨‍👩‍👧‍👦 보호자 비상 알림")
+        phone = st.text_input("보호자 전화번호:", "010-1234-5678")
+        if st.button("SOS 문자 보내기", key="sos"):
+            st.success(phone + " 번호로 위치 정보와 함께 SOS 메시지를 발송했습니다!")
+
+# 위험 감지 화면
+elif st.session_state['page'] == 'detect':
+    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
+    if st.button("👈 메인 홈으로 돌아가기", key="b2"):
+        st.session_state['page'] = 'home'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.title("📡 주변 위험 감지 서비스")
+    st.write("센서로 보행 중 주변 위험 요소를 실시간 감지합니다.")
+    st.divider()
+
+    if st.button("실시간 감지 스캔 실행", key="scan"):
+        st.success("주변 레이더 센서 정상 작동 중!")
+
+    st.write("")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.warning("⚠️ **전방 감지:** 전방 1.5m 지점에 문턱이 있습니다. 주의하세요!")
+    with c2:
+        st.info("✅ **측면 감지:** 좌/우측 도로가 안전합니다.")
+
+# 길 안내 화면
+elif st.session_state['page'] == 'path':
+    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
+    if st.button("👈 메인 홈으로 돌아가기", key="b3"):
+        st.session_state['page'] = 'home'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.title("
