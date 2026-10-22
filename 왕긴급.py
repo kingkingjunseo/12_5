@@ -1,6 +1,5 @@
-
-import streamlit as st
 from pathlib import Path
+import streamlit as st
 
 # ========================================
 # 1. 페이지 설정
@@ -150,18 +149,20 @@ st.markdown(
 
 
 # ========================================
-# 3. 페이지 이동 함수
+# 3. 페이지 이동 함수 (수정됨)
 # ========================================
 def safe_switch_page(relative_path):
-    page_path = BASE_DIR / relative_path
+  # 파일 존재 여부는 BASE_DIR로 확인하되,
+  page_path = BASE_DIR / relative_path
 
-    if not page_path.is_file():
-        st.error("페이지 파일을 찾을 수 없습니다.")
-        st.code(relative_path)
-        st.info("GitHub의 pages 폴더와 파일명을 확인해 주세요.")
-        return
+  if not page_path.is_file():
+    st.error("페이지 파일을 찾을 수 없습니다.")
+    st.code(relative_path)
+    st.info("GitHub의 pages 폴더와 파일명을 확인해 주세요.")
+    return
 
-    st.switch_page(str(page_path))
+  # st.switch_page에는 스트림릿이 인식하는 상대 경로 문자열 직접 전달
+  st.switch_page(relative_path)
 
 
 # ========================================
@@ -182,29 +183,29 @@ image_names = [
 found_image = None
 
 for image_name in image_names:
-    image_path = BASE_DIR / image_name
+  image_path = BASE_DIR / image_name
 
-    if image_path.is_file():
-        found_image = image_path
-        break
+  if image_path.is_file():
+    found_image = image_path
+    break
 
 if found_image is not None:
-    left_col, center_col, right_col = st.columns([1, 2, 1])
+  left_col, center_col, right_col = st.columns([1, 2, 1])
 
-    with center_col:
-        st.image(
-            str(found_image),
-            use_container_width=True,
-        )
+  with center_col:
+    st.image(
+        str(found_image),
+        use_container_width=True,
+    )
 else:
-    st.markdown(
-        """
+  st.markdown(
+      """
         <div class="title-banner">
             <div class="main-title">BIG-GINGEUP!! 🚨</div>
         </div>
         """,
-        unsafe_allow_html=True,
-    )
+      unsafe_allow_html=True,
+  )
 
 
 # ========================================
@@ -230,8 +231,8 @@ col1, col2, col3 = st.columns(3, gap="medium")
 
 # 기능 1: 자동 긴급 전화
 with col1:
-    st.markdown(
-        """
+  st.markdown(
+      """
         <div class="card-box bg-pink">
             <div class="card-icon">📞</div>
             <div class="card-title title-pink">
@@ -243,11 +244,11 @@ with col1:
             </div>
         </div>
         """,
-        unsafe_allow_html=True,
-    )
+      unsafe_allow_html=True,
+  )
 
-    st.markdown(
-        """
+  st.markdown(
+      """
         <style>
         div[data-testid="stHorizontalBlock"]
         > div:nth-child(1) div.stButton > button {
@@ -256,21 +257,19 @@ with col1:
         }
         </style>
         """,
-        unsafe_allow_html=True,
-    )
+      unsafe_allow_html=True,
+  )
 
-    if st.button(
-        "📞 긴급 신고 바로가기",
-        key="btn_call",
-        use_container_width=True,
-    ):
-        safe_switch_page("pages/자동 긴급 전화.py")
+  if st.button(
+      "📞 긴급 신고 바로가기", key="btn_call", use_container_width=True
+  ):
+    safe_switch_page("pages/자동 긴급 전화.py")
 
 
 # 기능 2: 주변 위험 감지
 with col2:
-    st.markdown(
-        """
+  st.markdown(
+      """
         <div class="card-box bg-yellow">
             <div class="card-icon">📡</div>
             <div class="card-title title-yellow">
@@ -282,11 +281,11 @@ with col2:
             </div>
         </div>
         """,
-        unsafe_allow_html=True,
-    )
+      unsafe_allow_html=True,
+  )
 
-    st.markdown(
-        """
+  st.markdown(
+      """
         <style>
         div[data-testid="stHorizontalBlock"]
         > div:nth-child(2) div.stButton > button {
@@ -295,21 +294,19 @@ with col2:
         }
         </style>
         """,
-        unsafe_allow_html=True,
-    )
+      unsafe_allow_html=True,
+  )
 
-    if st.button(
-        "📡 위험 확인 바로가기",
-        key="btn_detect",
-        use_container_width=True,
-    ):
-        safe_switch_page("pages/주변감지경보.py")
+  if st.button(
+      "📡 위험 확인 바로가기", key="btn_detect", use_container_width=True
+  ):
+    safe_switch_page("pages/주변감지경보.py")
 
 
 # 기능 3: 안전한 길 안내
 with col3:
-    st.markdown(
-        """
+  st.markdown(
+      """
         <div class="card-box bg-blue">
             <div class="card-icon">🗺️</div>
             <div class="card-title title-blue">
@@ -321,11 +318,11 @@ with col3:
             </div>
         </div>
         """,
-        unsafe_allow_html=True,
-    )
+      unsafe_allow_html=True,
+  )
 
-    st.markdown(
-        """
+  st.markdown(
+      """
         <style>
         div[data-testid="stHorizontalBlock"]
         > div:nth-child(3) div.stButton > button {
@@ -334,15 +331,11 @@ with col3:
         }
         </style>
         """,
-        unsafe_allow_html=True,
-    )
+      unsafe_allow_html=True,
+  )
 
-    if st.button(
-        "🗺️ 길 안내 바로가기",
-        key="btn_path",
-        use_container_width=True,
-    ):
-        safe_switch_page("pages/안전한 길 안내.py")
+  if st.button("🗺️ 길 안내 바로가기", key="btn_path", use_container_width=True):
+    safe_switch_page("pages/안전한 길 안내.py")
 
 
 # ========================================
@@ -350,6 +343,4 @@ with col3:
 # ========================================
 st.divider()
 
-st.caption(
-    "빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다."
-)
+st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
