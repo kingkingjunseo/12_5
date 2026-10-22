@@ -1,360 +1,306 @@
 
-import streamlit as st
+import io
+import math
+import wave
+import struct
+
 import requests
+import streamlit as st
 import folium
-import streamlit.components.v1 as components
 from streamlit_folium import st_folium
+
 
 st.set_page_config(
     page_title="안전 동행",
-    page_icon="🌼",
+    page_icon="🚶",
     layout="wide",
 )
 
-# 기존 학교 위치 유지
-SCHOOL_LAT = 36.84152810
-SCHOOL_LON = 127.14213325
-SEARCH_RADIUS = 500
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
 
-st.markdown("""
-<style>
-.stApp {
-    background-color: #FFF9F0;
-    color: #493D32;
-}
-.block-container {
-    max-width: 1100px;
-    padding-top: 2rem;
-}
-h1, h2, h3 {
-    color: #654B3B;
-}
-div.stButton > button {
-    border-radius: 18px;
-    min-height: 54px;
-    font-size: 18px;
-    font-weight: bold;
-    background-color: #F3DFC7;
-    color: #493D32;
-    border: 1px solid #E3C7A8;
-}
-div.stButton > button:hover {
-    background-color: #EBD0B0;
-}
-div[data-testid="stAlert"] {
-    border-radius: 16px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.title("🌼 안전 동행")
-st.markdown("오늘도 안전하게 걸어요! 주변의 보행 주의 정보를 확인해 보세요.")
-st.subheader("📍 현재 위치 확인")
+# 천안 오성고등학교 인근을 시작 위치로 사용하는 예시 좌표.
+# 실제 위치와 다를 수 있으므로 앱에서 직접 수정할 수 있다.
+DEFAULT_LAT = 36.82
+DEFAULT_LON = 127.14
 
 
-@st.cache_data(ttl=180)
-def search_hazards(lat, lon):
-    # 다양한 보행 위험 태그를 검색
+@st.cache_data(ttl=300, show_spinner=False)
+def get_hazards(lat, lon, radius):
+    """OpenStreetMap에서 주변 위험 관련 지도 데이터를 조회한다."""
     query = f"""
-    [out:json][timeout:35];
+    [out:json][timeout:20];
     (
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["construction"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["highway"="construction"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["barrier"="construction"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["hazard"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["highway"="steps"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["natural"="cliff"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["man_made"="embankment"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["incline"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["surface"~"gravel|unpaved|ground|dirt|mud"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["smoothness"~"bad|very_bad|horrible|very_horrible|impassable"];
-      nwr(around:{SEARCH_RADIUS},{lat},{lon})["tracktype"~"grade3|grade4|grade5"];
+      way(around:{radius},{lat},{lon})["highway"="construction"];
+      way(around:{radius},{lat},{lon})["construction"];
+      way(around:{radius},{lat},{lon})["barrier"="construction"];
+      way(around:{radius},{lat},{lon})["highway"="steps"];
+      node(around:{radius},{lat},{lon})["highway"="steps"];
+      way(around:{radius},{lat},{lon})["natural"="cliff"];
+      way(around:{radius},{lat},{lon})["barrier"="cliff"];
+      way(around:{radius},{lat},{lon})["highway"="path"]["smoothness"~"bad|very_bad|horrible|impassable"];
+      way(around:{radius},{lat},{lon})["highway"="track"]["smoothness"~"bad|very_bad|horrible|impassable"];
+      way(around:{radius},{lat},{lon})["incline"];
+      node(around:{radius},{lat},{lon})["hazard"];
     );
     out center tags;
     """
 
-    servers = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-    ]
     errors = []
 
-    for server in servers:
+    for endpoint in OVERPASS_URLS:
         try:
             response = requests.post(
-                server,
+                endpoint,
                 data={"data": query},
-                timeout=(10, 45),
-                headers={"User-Agent": "SafetyDonghaeng/1.0"},
+                timeout=30,
+                headers={"User-Agent": "SafeCompanionStreamlit/1.0"},
             )
             response.raise_for_status()
-            data = response.json()
+            payload = response.json()
+            return payload.get("elements", [])
+        except (requests.RequestException, ValueError) as exc:
+            errors.append(str(exc))
 
-            hazards = []
-            seen = set()
-
-            for element in data.get("elements", []):
-                tags = element.get("tags", {})
-
-                if "lat" in element and "lon" in element:
-                    h_lat = element["lat"]
-                    h_lon = element["lon"]
-                else:
-                    center = element.get("center", {})
-                    h_lat = center.get("lat")
-                    h_lon = center.get("lon")
-
-                if h_lat is None or h_lon is None:
-                    continue
-
-                key = (element.get("type"), element.get("id"))
-                if key in seen:
-                    continue
-                seen.add(key)
-
-                construction = (
-                    "construction" in tags
-                    or tags.get("highway") == "construction"
-                    or tags.get("barrier") == "construction"
-                )
-
-                incline = str(tags.get("incline", "")).lower()
-                steep = (
-                    tags.get("natural") == "cliff"
-                    or tags.get("man_made") == "embankment"
-                    or incline in ("steep", "very_steep")
-                )
-
-                # 경사도 숫자가 등록된 경우 8% 초과를 주의 대상으로 분류
-                try:
-                    incline_number = float(
-                        incline.replace("%", "").replace("+", "")
-                    )
-                    if abs(incline_number) > 8:
-                        steep = True
-                except ValueError:
-                    pass
-
-                steps = tags.get("highway") == "steps"
-
-                rough_surface = (
-                    tags.get("surface") in (
-                        "gravel", "unpaved", "ground", "dirt", "mud"
-                    )
-                    or tags.get("smoothness") in (
-                        "bad", "very_bad", "horrible",
-                        "very_horrible", "impassable"
-                    )
-                    or tags.get("tracktype") in (
-                        "grade3", "grade4", "grade5"
-                    )
-                )
-
-                if construction:
-                    kind = "🚧 공사 관련 정보"
-                    severity = "공사"
-                elif steep:
-                    kind = "⛰️ 급경사·절벽 관련 정보"
-                    severity = "경사"
-                elif steps:
-                    kind = "🪜 계단"
-                    severity = "계단"
-                elif rough_surface:
-                    kind = "⚠️ 거친·비포장 보행로"
-                    severity = "노면"
-                elif tags.get("hazard"):
-                    kind = "🚨 등록된 위험 정보"
-                    severity = "위험"
-                else:
-                    continue
-
-                hazards.append({
-                    "lat": float(h_lat),
-                    "lon": float(h_lon),
-                    "kind": kind,
-                    "severity": severity,
-                    "name": tags.get("name", "이름 미등록"),
-                    "details": (
-                        f"표면: {tags.get('surface', '정보 없음')}, "
-                        f"경사: {tags.get('incline', '정보 없음')}"
-                    ),
-                })
-
-            return hazards, None
-
-        except (requests.RequestException, ValueError) as error:
-            errors.append(str(error))
-
-    return [], "주변 위험 정보 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
-
-
-# 위치 찾기 버튼
-if st.button("📍 현재 위치 찾기", use_container_width=True):
-    st.session_state["show_map"] = True
-    search_hazards.clear()
-
-    with st.spinner("주변 보행 주의 정보를 검색하고 있어요..."):
-        hazards, error = search_hazards(SCHOOL_LAT, SCHOOL_LON)
-
-    st.session_state["hazards"] = hazards
-    st.session_state["hazard_error"] = error
-    st.session_state["alarm_pending"] = bool(hazards) and not error
-
-# 다시 검색
-if st.session_state.get("show_map", False):
-    if st.button("🔎 주변 위험 정보 다시 검색", use_container_width=True):
-        search_hazards.clear()
-
-        with st.spinner("주변 정보를 다시 검색하고 있어요..."):
-            hazards, error = search_hazards(SCHOOL_LAT, SCHOOL_LON)
-
-        st.session_state["hazards"] = hazards
-        st.session_state["hazard_error"] = error
-        st.session_state["alarm_pending"] = bool(hazards) and not error
-
-if st.session_state.get("show_map", False):
-    hazards = st.session_state.get("hazards", [])
-    error = st.session_state.get("hazard_error")
-
-    st.subheader("🗺️ 내 주변 지도")
-
-    m = folium.Map(
-        location=[SCHOOL_LAT, SCHOOL_LON],
-        zoom_start=17,
-        control_scale=True,
+    raise RuntimeError(
+        "지도 데이터를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요."
     )
 
-    # 검색 반경
-    folium.Circle(
-        [SCHOOL_LAT, SCHOOL_LON],
-        radius=SEARCH_RADIUS,
-        color="#DCA36C",
-        fill=True,
-        fill_opacity=0.07,
-        tooltip="검색 범위 500m",
-    ).add_to(m)
 
-    # 현재 위치 표시
-    folium.Marker(
-        [SCHOOL_LAT, SCHOOL_LON],
-        tooltip="현재 위치로 지정된 학교",
-        popup="천안오성고등학교",
-        icon=folium.Icon(
-            color="blue",
-            icon="user",
-            prefix="fa",
-        ),
-    ).add_to(m)
+def get_coordinates(element):
+    """노드 또는 도로 중심점의 좌표를 반환한다."""
+    if "lat" in element and "lon" in element:
+        return element["lat"], element["lon"]
 
-    # 위험 정보는 큰 빨간 원 + 빨간 경고 아이콘으로 표시
-    for hazard in hazards:
-        popup_text = (
-            f"{hazard['kind']}<br>"
-            f"이름: {hazard['name']}<br>"
-            f"{hazard['details']}"
+    center = element.get("center", {})
+    if "lat" in center and "lon" in center:
+        return center["lat"], center["lon"]
+
+    return None
+
+
+def classify_hazard(tags):
+    """지도 태그를 사용자에게 이해하기 쉬운 위험 종류로 변환한다."""
+    if (
+        tags.get("highway") == "construction"
+        or "construction" in tags
+        or tags.get("barrier") == "construction"
+    ):
+        return "공사 구간"
+
+    if tags.get("highway") == "steps":
+        return "계단"
+
+    if tags.get("natural") == "cliff" or tags.get("barrier") == "cliff":
+        return "절벽"
+
+    if tags.get("hazard"):
+        return "위험 표시"
+
+    if tags.get("incline"):
+        return "경사 정보"
+
+    if tags.get("smoothness"):
+        return "노면 상태 주의"
+
+    return "주의 구간"
+
+
+def make_beep():
+    """외부 음원 파일 없이 짧은 경고음을 WAV로 생성한다."""
+    sample_rate = 22050
+    duration = 0.45
+    frequency = 880
+    frames = bytearray()
+
+    for i in range(int(sample_rate * duration)):
+        sample = int(
+            10000 * math.sin(2 * math.pi * frequency * i / sample_rate)
+        )
+        frames.extend(struct.pack("<h", sample))
+
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(frames)
+
+    return output.getvalue()
+
+
+st.title("🚶 안전 동행")
+st.subheader("어르신을 위한 주변 보행 안전 지도")
+st.write(
+    "주변의 공사 구간, 계단, 절벽, 경사 및 노면 상태 관련 "
+    "지도 정보를 확인할 수 있습니다."
+)
+
+with st.sidebar:
+    st.header("📍 탐색 설정")
+
+    lat = st.number_input(
+        "위도",
+        min_value=-90.0,
+        max_value=90.0,
+        value=DEFAULT_LAT,
+        format="%.6f",
+    )
+    lon = st.number_input(
+        "경도",
+        min_value=-180.0,
+        max_value=180.0,
+        value=DEFAULT_LON,
+        format="%.6f",
+    )
+    radius = st.slider(
+        "주변 탐색 거리 (m)",
+        min_value=100,
+        max_value=2000,
+        value=500,
+        step=100,
+    )
+
+    search_clicked = st.button(
+        "주변 위험 요소 찾기",
+        type="primary",
+        use_container_width=True,
+    )
+
+    st.caption(
+        "현재 좌표는 초기 예시값입니다. 실제 위치의 위도와 경도를 "
+        "입력해 주세요. 자동 GPS 위치 추적 기능은 포함되어 있지 않습니다."
+    )
+
+if "hazards" not in st.session_state:
+    st.session_state.hazards = None
+if "search_error" not in st.session_state:
+    st.session_state.search_error = None
+if "last_search" not in st.session_state:
+    st.session_state.last_search = None
+
+if search_clicked or st.session_state.last_search is None:
+    with st.spinner("주변 지도 데이터를 검색하고 있습니다..."):
+        try:
+            results = get_hazards(float(lat), float(lon), int(radius))
+            st.session_state.hazards = results
+            st.session_state.search_error = None
+            st.session_state.last_search = (lat, lon, radius)
+        except Exception as exc:
+            st.session_state.search_error = str(exc)
+            st.session_state.hazards = None
+            st.session_state.last_search = (lat, lon, radius)
+
+if st.session_state.search_error:
+    st.error(st.session_state.search_error)
+    st.info("인터넷 연결을 확인하거나 잠시 후 다시 검색해 주세요.")
+
+hazards = st.session_state.hazards
+
+if hazards is not None:
+    valid_hazards = []
+
+    for item in hazards:
+        coords = get_coordinates(item)
+        if coords is None:
+            continue
+
+        item_lat, item_lon = coords
+        tags = item.get("tags", {})
+        valid_hazards.append(
+            {
+                "lat": item_lat,
+                "lon": item_lon,
+                "type": classify_hazard(tags),
+                "name": tags.get("name", "이름 없는 위험 지점"),
+                "details": tags,
+                "id": item.get("id"),
+            }
         )
 
-        folium.CircleMarker(
-            location=[hazard["lat"], hazard["lon"]],
-            radius=15,
-            color="#8B0000",
-            weight=3,
-            fill=True,
-            fill_color="#FF0000",
-            fill_opacity=0.85,
-            tooltip=hazard["kind"],
-            popup=popup_text,
-        ).add_to(m)
+    left, right = st.columns([2, 1])
+
+    with left:
+        st.markdown("### 🗺️ 주변 위험 지도")
+
+        map_view = folium.Map(
+            location=[lat, lon],
+            zoom_start=16,
+            tiles="OpenStreetMap",
+        )
 
         folium.Marker(
-            [hazard["lat"], hazard["lon"]],
-            tooltip=f"⚠️ {hazard['kind']}",
-            popup=popup_text,
-            icon=folium.Icon(
-                color="red",
-                icon="exclamation-triangle",
-                prefix="fa",
-            ),
-        ).add_to(m)
+            [lat, lon],
+            tooltip="설정한 기준 위치",
+            popup="현재 탐색 기준 위치 (GPS로 확인된 위치가 아닐 수 있음)",
+            icon=folium.Icon(color="blue", icon="user"),
+        ).add_to(map_view)
 
-    st_folium(
-        m,
-        height=500,
-        use_container_width=True,
-        key="safety_donghaeng_map",
-    )
+        # 탐색 반경 표시
+        folium.Circle(
+            location=[lat, lon],
+            radius=radius,
+            color="blue",
+            fill=True,
+            fill_opacity=0.06,
+            tooltip=f"탐색 반경 {radius}m",
+        ).add_to(map_view)
 
-    st.caption("🔵 파란색: 지정된 현재 위치 · 🔴 빨간색: 검색된 주의 정보")
+        for hazard in valid_hazards:
+            folium.Marker(
+                [hazard["lat"], hazard["lon"]],
+                tooltip=f"⚠️ {hazard['type']}",
+                popup=(
+                    f"위험 종류: {hazard['type']}<br>"
+                    f"이름: {hazard['name']}<br>"
+                    f"지도 객체 ID: {hazard['id']}"
+                ),
+                icon=folium.Icon(color="red", icon="warning-sign"),
+            ).add_to(map_view)
 
-    if error:
-        st.error(error)
-
-    elif hazards:
-        st.error(f"🚨 주변 보행 주의 정보 {len(hazards)}개를 찾았습니다.")
-
-        for hazard in hazards:
-            st.warning(
-                f"{hazard['kind']} — {hazard['name']} "
-                f"({hazard['details']})"
-            )
-
-        # 브라우저가 자동 재생을 허용하면 경보음 재생을 시도
-        if st.session_state.get("alarm_pending", False):
-            components.html("""
-            <script>
-            (async () => {
-              try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                await ctx.resume();
-                for (let i = 0; i < 4; i++) {
-                  const osc = ctx.createOscillator();
-                  const gain = ctx.createGain();
-                  osc.type = "sine";
-                  osc.frequency.value = 880;
-                  gain.gain.value = 0.22;
-                  osc.connect(gain);
-                  gain.connect(ctx.destination);
-                  const start = ctx.currentTime + i * 0.5;
-                  osc.start(start);
-                  osc.stop(start + 0.3);
-                }
-              } catch (e) {}
-            })();
-            </script>
-            """, height=0)
-            st.session_state["alarm_pending"] = False
-
-        # 자동 재생이 차단된 경우 사용자가 눌러 재생
-        if st.button("🔔 경보음 재생", use_container_width=True):
-            components.html("""
-            <script>
-            (async () => {
-              const ctx = new (window.AudioContext || window.webkitAudioContext)();
-              await ctx.resume();
-              for (let i = 0; i < 4; i++) {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.frequency.value = 880;
-                gain.gain.value = 0.22;
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                const start = ctx.currentTime + i * 0.5;
-                osc.start(start);
-                osc.stop(start + 0.3);
-              }
-            })();
-            </script>
-            """, height=0)
-
-    elif not error:
-        st.success("검색 조건에 맞는 위험 정보를 찾지 못했습니다.")
-        st.caption(
-            "등록된 위험 정보가 없다는 뜻이며, "
-            "실제로 위험이 없다는 보장은 없습니다."
+        st_folium(
+            map_view,
+            use_container_width=True,
+            height=520,
+            key="safety_map",
         )
 
-st.divider()
-st.caption(
-    "🌷 안전 동행은 보행 보조용 시제품입니다. "
-    "지도에 등록되지 않은 공사장·급경사·장애물은 표시되지 않을 수 있습니다."
-)
+    with right:
+        st.markdown("### 🚨 탐색 결과")
+
+        st.metric("발견한 위험 관련 지도 객체", len(valid_hazards))
+
+        if valid_hazards:
+            st.warning(
+                "주변에서 위험 관련 지도 정보를 발견했습니다. "
+                "실제 현장을 확인하고 안전하게 이동하세요."
+            )
+
+            if st.button("🔊 경고음 재생", use_container_width=True):
+                st.audio(make_beep(), format="audio/wav")
+
+            for index, hazard in enumerate(valid_hazards, start=1):
+                with st.container(border=True):
+                    st.markdown(f"**🔴 {index}. {hazard['type']}**")
+                    st.write(hazard["name"])
+                    st.caption(
+                        f"위도 {hazard['lat']:.5f}, "
+                        f"경도 {hazard['lon']:.5f}"
+                    )
+
+                    if hazard["details"]:
+                        with st.expander("지도 세부 정보"):
+                            st.json(hazard["details"])
+        else:
+            st.success(
+                "검색된 위험 관련 지도 정보가 없습니다. "
+                "위험이 없다는 뜻은 아니므로 주변을 계속 살펴보세요."
+            )
+
+    st.caption(
+        "데이터 출처: OpenStreetMap 및 Overpass API. "
+        "정보 누락, 오래된 데이터, 위치 오차가 있을 수 있습니다. "
+        "이 앱은 실시간 현장 감지나 안전을 보장하지 않습니다."
+    )
