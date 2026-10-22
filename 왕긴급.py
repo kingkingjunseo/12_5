@@ -71,3 +71,66 @@ if curr_page == 'home':
         if st.button("길 안내 바로가기", key="btn_path"):
             st.session_state['page'] = 'path'
             st.rerun()
+
+    st.divider()
+    st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
+
+elif curr_page == 'call':
+    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
+    if st.button("메인 홈으로 돌아가기", key="b1"):
+        st.session_state['page'] = 'home'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.title("자동 긴급 전화 서비스")
+    st.write("긴급 상황 시 버튼 한 번으로 도움을 요청하세요.")
+    st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.error("119 긴급 구조대")
+        st.write("클릭 시 119로 즉시 전화가 연결됩니다.")
+        st.markdown('<a href="tel:119" style="display:inline-block; background-color:#ff4757; color:white; padding:16px 30px; border-radius:18px; font-size:1.3em; font-weight:bold; text-decoration:none;">119 바로 전화걸기</a>', unsafe_allow_html=True)
+
+    with col2:
+        st.warning("보호자 비상 알림")
+        phone = st.text_input("보호자 전화번호:", "010-1234-5678")
+        if st.button("SOS 문자 보내기", key="sos"):
+            st.success(phone + " 번호로 위치 정보와 함께 SOS 메시지를 발송했습니다!")
+
+elif curr_page == 'detect':
+    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
+    if st.button("메인 홈으로 돌아가기", key="b2"):
+        st.session_state['page'] = 'home'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.title("주변 위험 감지 서비스")
+    st.write("센서로 보행 중 주변 위험 요소를 실시간 감지합니다.")
+    st.divider()
+
+    if st.button("실시간 감지 스캔 실행", key="scan"):
+        st.success("주변 레이더 센서 정상 작동 중!")
+    
+    st.write("")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.warning("전방 감지: 전방 1.5m 지점에 문턱이 있습니다. 주의하세요!")
+    with c2:
+        st.info("측면 감지: 좌/우측 도로가 안전합니다.")
+
+elif curr_page == 'path':
+    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
+    if st.button("메인 홈으로 돌아가기", key="b3"):
+        st.session_state['page'] = 'home'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.title("안전한 길 안내 서비스")
+    st.write("계단이나 경사가 없는 평탄한 안심 보행 경로를 안내합니다.")
+    st.divider()
+
+    dest = st.text_input("목적지 입력:", "경로당")
+    if st.button("안전 경로 탐색하기", key="find"):
+        st.success(dest + " (으)로 가는 무장애 최적 경로 탐색 완료!")
+        st.markdown('<div class="mock-map">📍 안심 경로 안내<br><br>• 목적지: ' + dest + '<br>• 소요시간: 도보 12분<br>• 경로: 계단 없음 / 턱 없음 / 평지 위주 경로</div>', unsafe_allow_html=True)
