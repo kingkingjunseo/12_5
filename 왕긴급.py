@@ -10,9 +10,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# 현재 실행 중인 파이썬 파일의 폴더
+# 프로젝트 루트 경로
 BASE_DIR = Path(__file__).resolve().parent
-
+PAGES_DIR = BASE_DIR / "pages"
 
 # 2. 파스텔톤 커스텀 CSS
 st.markdown(
@@ -41,32 +41,30 @@ st.markdown(
     }
 
     .card-box {
-        border-radius: 30px;
-        padding: 25px 20px 15px 20px;
+        border-radius: 25px;
+        padding: 22px 15px;
         text-align: center;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.05);
         margin-bottom: 12px;
         border: 4px solid #ffffff;
-        min-height: 225px;
-        box-sizing: border-box;
+        min-height: 230px;
     }
 
     .card-icon {
-        font-size: 4em;
+        font-size: 3.5em;
         margin-bottom: 8px;
     }
 
     .card-title {
-        font-size: 1.8em;
+        font-size: 1.5em;
         font-weight: 800;
         margin-bottom: 10px;
     }
 
     .card-desc {
-        font-size: 1.05em;
+        font-size: 1em;
         color: #555555;
-        min-height: 50px;
-        line-height: 1.5;
+        line-height: 1.6;
         font-weight: 600;
     }
 
@@ -74,108 +72,85 @@ st.markdown(
     .title-pink { color: #ff4757; }
 
     .bg-yellow { background-color: #fff9db; }
-    .title-yellow { color: #ffa502; }
+    .title-yellow { color: #d99400; }
 
     .bg-blue { background-color: #e8f4ff; }
-    .title-blue { color: #1e90ff; }
+    .title-blue { color: #1e75d8; }
 
+    /* 모든 버튼에 일관된 스타일 적용 */
     div.stButton > button {
         width: 100%;
-        min-height: 58px;
-        border-radius: 22px;
-        font-size: 1.1em;
+        min-height: 54px;
+        border-radius: 18px;
+        font-size: 1.05em;
         font-weight: 800;
-        padding: 12px 8px;
-        border: 3px solid #ffffff;
-        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
-        transition: transform 0.15s ease;
-    }
-
-    div.stButton > button:hover {
-        transform: translateY(-2px);
-        border-color: #ffffff;
-    }
-
-    /* 각 기능 버튼의 색상 */
-    div[data-testid="column"]:nth-child(1)
-    div.stButton > button {
+        border: 2px solid #ffffff;
+        box-shadow: 0 5px 12px rgba(0, 0, 0, 0.08);
         background-color: #ff6b81;
         color: white;
     }
 
-    div[data-testid="column"]:nth-child(2)
-    div.stButton > button {
-        background-color: #e0b83f;
+    div.stButton > button:hover {
+        border-color: #ffb7c5;
+        color: white;
+        filter: brightness(0.96);
+    }
+
+    div.stButton > button:focus:not(:active) {
+        border-color: #ff6b81;
         color: white;
     }
 
-    div[data-testid="column"]:nth-child(3)
-    div.stButton > button {
-        background-color: #70a1ff;
-        color: white;
-    }
-
-    @media (max-width: 768px) {
-        .main-title {
-            font-size: 2em;
-        }
-
-        .card-box {
-            padding: 20px 12px;
-            min-height: 200px;
-        }
-
-        .card-title {
-            font-size: 1.35em;
-        }
-
-        .card-icon {
-            font-size: 3em;
-        }
-
-        .card-desc {
-            font-size: 0.95em;
-        }
+    @media (max-width: 700px) {
+        .main-title { font-size: 2em; }
+        .card-box { min-height: auto; }
+        .card-title { font-size: 1.25em; }
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+# 3. 페이지 이동 함수
+def safe_switch_page(candidates, feature_name):
+    """
+    실제 존재하는 페이지 파일만 이동 대상으로 사용한다.
+    후보 파일이 없으면 가능한 경로를 안내한다.
+    """
+    for relative_path in candidates:
+        page_path = BASE_DIR / relative_path
 
-# 3. 안전한 페이지 이동 함수
-def safe_switch_page(relative_path):
-    """페이지 파일이 존재하는지 확인한 뒤 이동합니다."""
-    page_file = BASE_DIR / relative_path
+        if page_path.is_file():
+            try:
+                st.switch_page(str(page_path))
+                return
+            except Exception as exc:
+                st.error(
+                    f"{feature_name} 페이지를 열지 못했어요. "
+                    "파일 이름과 Streamlit 페이지 설정을 확인해 주세요."
+                )
+                st.caption(f"오류 정보: {exc}")
+                return
 
-    if not page_file.is_file():
-        st.error(
-            f"페이지 파일을 찾을 수 없습니다: {relative_path}"
-        )
-        st.info(
-            "GitHub 저장소에서 파일 이름과 폴더 위치를 확인해 주세요."
-        )
-        return
+    expected_paths = "\n".join(
+        f"- `{path}`" for path in candidates
+    )
 
-    try:
-        # Streamlit 페이지 경로는 메인 스크립트 기준 상대 경로
-        st.switch_page(relative_path)
-    except Exception as exc:
-        st.error(f"페이지 이동 중 오류가 발생했습니다: {exc}")
+    st.error(f"{feature_name} 페이지 파일을 찾을 수 없어요.")
+    st.markdown(
+        "GitHub 저장소에 다음 경로 중 하나로 파일이 있는지 확인해 주세요."
+    )
+    st.markdown(expected_paths)
 
 
-# 4. 상단 마스코트 이미지 찾기
-# 원하는 이미지 파일명을 우선적으로 찾습니다.
+# 4. 마스코트 이미지 표시
+# 우선 지정한 파일명을 찾고, 없으면 기본 배너를 표시한다.
 image_candidates = [
     "mascot.png",
-    "logo.png",
-    "main.png",
     "mascot.jpg",
-    "logo.jpg",
-    "main.jpg",
     "mascot.jpeg",
-    "logo.jpeg",
-    "main.jpeg",
+    "character.png",
+    "character.jpg",
 ]
 
 found_image = next(
@@ -188,9 +163,9 @@ found_image = next(
 )
 
 if found_image:
-    col_left, col_center, col_right = st.columns([1, 2, 1])
+    col_l, col_c, col_r = st.columns([1, 2, 1])
 
-    with col_center:
+    with col_c:
         st.image(str(found_image), use_container_width=True)
 else:
     st.markdown(
@@ -202,20 +177,18 @@ else:
         unsafe_allow_html=True,
     )
 
-
-# 5. 소개 문구
 st.markdown(
     """
     <div style="
-        text-align: center;
-        font-size: 1.3em;
-        font-weight: 800;
-        color: #57606f;
-        margin-top: 5px;
-        margin-bottom: 25px;
+        text-align:center;
+        font-size:1.2em;
+        font-weight:800;
+        color:#57606f;
+        margin-bottom:24px;
     ">
-        언제 어디서나 왕긴급한 일에 대비하기 위해선<br>
-        <span style="color: #ff4757; font-size: 1.2em;">
+        언제 어디서나 왕긴급한 일에 대비하기 위해선
+        <br>
+        <span style="color:#ff4757;font-size:1.3em;">
             왕 긴 급!
         </span>
     </div>
@@ -223,12 +196,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# 6. 기능별 카드 및 버튼
+# 5. 기능 카드
 cols = st.columns(3, gap="medium")
 
-
-# 기능 1: 자동 긴급 전화
+# 첫 번째 카드: 긴급 전화
 with cols[0]:
     st.markdown(
         """
@@ -236,8 +207,8 @@ with cols[0]:
             <div class="card-icon">📞</div>
             <div class="card-title title-pink">자동 긴급 전화</div>
             <div class="card-desc">
-                긴급상황 시 보호자와 구조대에게
-                바로 신고해요.
+                긴급상황에 대비해<br>
+                보호자와 신고 정보를 확인해요.
             </div>
         </div>
         """,
@@ -245,14 +216,20 @@ with cols[0]:
     )
 
     if st.button(
-        "📞 긴급 신고 바로가기",
+        "긴급 신고 바로가기",
         key="btn_call",
         use_container_width=True,
     ):
-        safe_switch_page("pages/자동 긴급 전화.py")
+        safe_switch_page(
+            [
+                "pages/자동 긴급 전화.py",
+                "pages/1_전화.py",
+                "자동 긴급 전화.py",
+            ],
+            "자동 긴급 전화",
+        )
 
-
-# 기능 2: 주변 위험 감지
+# 두 번째 카드: 주변 위험 감지
 with cols[1]:
     st.markdown(
         """
@@ -260,8 +237,8 @@ with cols[1]:
             <div class="card-icon">📡</div>
             <div class="card-title title-yellow">주변 위험 감지</div>
             <div class="card-desc">
-                주변 장애물을 센서로 감지하여
-                안전을 지켜요.
+                주변 장애물과 위험 요소를<br>
+                확인할 수 있도록 도와줘요.
             </div>
         </div>
         """,
@@ -269,14 +246,20 @@ with cols[1]:
     )
 
     if st.button(
-        "📡 위험 확인 바로가기",
+        "위험 확인 바로가기",
         key="btn_detect",
         use_container_width=True,
     ):
-        safe_switch_page("pages/주변감지경보.py")
+        safe_switch_page(
+            [
+                "pages/주변감지경보.py",
+                "pages/2_감지.py",
+                "주변감지경보.py",
+            ],
+            "주변 위험 감지",
+        )
 
-
-# 기능 3: 안전한 길 안내
+# 세 번째 카드: 안전한 길 안내
 with cols[2]:
     st.markdown(
         """
@@ -284,8 +267,8 @@ with cols[2]:
             <div class="card-icon">🗺️</div>
             <div class="card-title title-blue">안전한 길 안내</div>
             <div class="card-desc">
-                안전한 경로를 안내하여
-                보행을 도와요.
+                지도에서 위치를 확인하고<br>
+                이동 지점을 기록해요.
             </div>
         </div>
         """,
@@ -293,16 +276,33 @@ with cols[2]:
     )
 
     if st.button(
-        "🗺️ 길 안내 바로가기",
+        "길 안내 바로가기",
         key="btn_path",
         use_container_width=True,
     ):
-        safe_switch_page("pages/안전한 길 안내.py")
+        safe_switch_page(
+            [
+                "pages/안전한 길 안내.py",
+                "pages/3_길안내.py",
+                "안전한 길 안내.py",
+            ],
+            "안전한 길 안내",
+        )
 
-
-# 7. 하단 안내
 st.divider()
 
-st.caption(
-    "빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다."
+st.markdown(
+    """
+    <div style="
+        text-align:center;
+        color:#777;
+        font-size:0.9em;
+        padding:10px;
+    ">
+        빅-긴급!! (BIG-GINGEUP)
+        <br>
+        어르신의 안전한 이동을 돕는 프로젝트
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
