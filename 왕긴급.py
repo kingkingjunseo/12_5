@@ -112,7 +112,7 @@ st.markdown("""
 # --- [화면 1: 메인 홈] ---
 if st.session_state['page'] == 'home':
     
-    # 🌟 천사 경보기 이미지 파일 지정 및 표시 🌟
+    # 천사 경보기 이미지 로드
     target_images = ['image_13935c.png', 'image_0.png', 'image.png']
     found_image = None
     
@@ -187,4 +187,28 @@ if st.session_state['page'] == 'home':
     st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
 
 # --- [화면 2: 자동 긴급 전화] ---
-elif st.session
+elif st.session_state['page'] == 'call':
+    st.markdown('<div class="back-btn">', unsafe_allow_html=True)
+    if st.button("메인으로 돌아가기", key="b1"):
+        st.session_state['page'] = 'home'
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.title("📞 자동 긴급 전화 서비스")
+    st.write("긴급 상황 시 버튼 한 번으로 도움을 요청하세요.")
+    st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.error("### 119 긴급 구조대")
+        st.write("클릭 시 119로 즉시 전화가 연결됩니다.")
+        st.markdown("""
+        <a href="tel:119" style="display:inline-block; background-color:#ff4757; color:white; padding:16px 30px; border-radius:18px; font-size:1.3em; font-weight:bold; text-decoration:none;">
+            119 바로 전화걸기
+        </a>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.warning("### 보호자 비상 연락")
+        phone_num = st.text_input("보호자 전화번호:", "010-1234-5678")
+        if st.button("SOS 문자 보내기", key="
