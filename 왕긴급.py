@@ -2,9 +2,7 @@
 import streamlit as st
 from pathlib import Path
 
-# ==========================================
 # 1. 페이지 기본 설정
-# ==========================================
 st.set_page_config(
     page_title="왕긴급!",
     page_icon="🚨",
@@ -14,10 +12,7 @@ st.set_page_config(
 
 BASE_DIR = Path(__file__).resolve().parent
 
-
-# ==========================================
 # 2. 파스텔톤 디자인
-# ==========================================
 st.markdown(
     """
     <style>
@@ -33,14 +28,13 @@ st.markdown(
         border-radius: 30px;
         box-shadow: 0 8px 16px rgba(255, 182, 193, 0.3);
         margin-bottom: 20px;
-        border: 3px solid #ffffff;
+        border: 3px solid white;
     }
 
     .main-title {
         font-size: 2.8em;
         font-weight: 900;
         color: #ff5e7e;
-        margin-bottom: 8px;
     }
 
     .intro-text {
@@ -48,7 +42,7 @@ st.markdown(
         font-size: 1.3em;
         font-weight: 800;
         color: #57606f;
-        margin: 10px 0 25px 0;
+        margin: 15px 0 25px;
         line-height: 1.8;
     }
 
@@ -59,11 +53,11 @@ st.markdown(
 
     .card-box {
         border-radius: 30px;
-        padding: 25px 15px 20px 15px;
+        padding: 25px 15px 20px;
         text-align: center;
         box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
         margin-bottom: 12px;
-        border: 4px solid #ffffff;
+        border: 4px solid white;
         min-height: 245px;
         box-sizing: border-box;
     }
@@ -81,35 +75,18 @@ st.markdown(
 
     .card-desc {
         font-size: 1em;
-        color: #555555;
+        color: #555;
         min-height: 55px;
         line-height: 1.6;
         font-weight: 600;
     }
 
-    .bg-pink {
-        background-color: #fff0f3;
-    }
-
-    .title-pink {
-        color: #ff4757;
-    }
-
-    .bg-yellow {
-        background-color: #fff9db;
-    }
-
-    .title-yellow {
-        color: #d99a00;
-    }
-
-    .bg-blue {
-        background-color: #e8f4ff;
-    }
-
-    .title-blue {
-        color: #1e90ff;
-    }
+    .bg-pink { background-color: #fff0f3; }
+    .title-pink { color: #ff4757; }
+    .bg-yellow { background-color: #fff9db; }
+    .title-yellow { color: #d99a00; }
+    .bg-blue { background-color: #e8f4ff; }
+    .title-blue { color: #1e90ff; }
 
     div.stButton > button {
         width: 100%;
@@ -118,36 +95,16 @@ st.markdown(
         font-size: 1.05em;
         font-weight: 800;
         padding: 12px 8px;
-        border: 3px solid #ffffff;
+        border: 3px solid white;
         box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
     }
 
-    div.stButton > button:hover {
-        filter: brightness(0.95);
-        border-color: #ffffff;
-    }
-
     @media (max-width: 768px) {
-        .main-title {
-            font-size: 2em;
-        }
-
-        .card-box {
-            padding: 20px 10px;
-            min-height: 220px;
-        }
-
-        .card-title {
-            font-size: 1.2em;
-        }
-
-        .card-icon {
-            font-size: 2.8em;
-        }
-
-        .card-desc {
-            font-size: 0.9em;
-        }
+        .main-title { font-size: 2em; }
+        .card-box { padding: 20px 10px; min-height: 220px; }
+        .card-title { font-size: 1.2em; }
+        .card-icon { font-size: 2.8em; }
+        .card-desc { font-size: 0.9em; }
     }
     </style>
     """,
@@ -155,57 +112,41 @@ st.markdown(
 )
 
 
-# ==========================================
-# 3. 페이지 이동 함수
-# ==========================================
+# 3. 페이지 이동
 def safe_switch_page(relative_path):
     page_path = BASE_DIR / relative_path
 
     if not page_path.is_file():
         st.error("페이지 파일을 찾을 수 없습니다.")
         st.code(relative_path)
-        st.info(
-            "GitHub의 pages 폴더에서 실제 파일 이름을 확인해 주세요."
-        )
+        st.info("GitHub의 pages 폴더와 실제 파일명을 확인해 주세요.")
         return
 
     try:
         st.switch_page(str(page_path))
     except Exception as error:
-        st.error(f"페이지 이동에 실패했습니다: {error}")
+        st.error(f"페이지 이동 오류: {error}")
 
 
-# ==========================================
-# 4. 상단 마스코트 이미지
-# ==========================================
+# 4. 마스코트 이미지
 image_candidates = [
-    "mascot.png",
-    "logo.png",
-    "main.png",
-    "mascot.jpg",
-    "logo.jpg",
-    "main.jpg",
-    "mascot.jpeg",
-    "logo.jpeg",
-    "main.jpeg",
+    "mascot.png", "logo.png", "main.png",
+    "mascot.jpg", "logo.jpg", "main.jpg",
+    "mascot.jpeg", "logo.jpeg", "main.jpeg",
 ]
 
 found_image = None
 
-for image_name in image_candidates:
-    image_path = BASE_DIR / image_name
-    if image_path.is_file():
-        found_image = image_path
+for name in image_candidates:
+    candidate = BASE_DIR / name
+    if candidate.is_file():
+        found_image = candidate
         break
 
-if found_image is not None:
-    left_col, center_col, right_col = st.columns([1, 2, 1])
-
-    with center_col:
-        st.image(
-            str(found_image),
-            use_container_width=True,
-        )
+if found_image:
+    left, center, right = st.columns([1, 2, 1])
+    with center:
+        st.image(str(found_image), use_container_width=True)
 else:
     st.markdown(
         """
@@ -217,9 +158,7 @@ else:
     )
 
 
-# ==========================================
-# 5. 소개 문구
-# ==========================================
+# 5. 소개
 st.markdown(
     """
     <div class="intro-text">
@@ -232,15 +171,9 @@ st.markdown(
 )
 
 
-# ==========================================
-# 6. 기능별 카드
-# ==========================================
+# 6. 기능 카드
 col1, col2, col3 = st.columns(3, gap="medium")
 
-
-# ==========================================
-# 기능 1. 자동 긴급 전화
-# ==========================================
 with col1:
     st.markdown(
         """
@@ -256,30 +189,11 @@ with col1:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stHorizontalBlock"]
-        > div:nth-child(1) div.stButton > button {
-            background-color: #ff6b81;
-            color: white;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if st.button(
-        "📞 긴급 신고 바로가기",
-        key="btn_call",
-        use_container_width=True,
-    ):
+    if st.button("📞 긴급 신고 바로가기", key="btn_call",
+                 use_container_width=True, type="primary"):
         safe_switch_page("pages/자동 긴급 전화.py")
 
 
-# ==========================================
-# 기능 2. 주변 위험 감지
-# ==========================================
 with col2:
     st.markdown(
         """
@@ -295,30 +209,11 @@ with col2:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stHorizontalBlock"]
-        > div:nth-child(2) div.stButton > button {
-            background-color: #eccc68;
-            color: white;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if st.button(
-        "📡 위험 확인 바로가기",
-        key="btn_detect",
-        use_container_width=True,
-    ):
+    if st.button("📡 위험 확인 바로가기", key="btn_detect",
+                 use_container_width=True, type="primary"):
         safe_switch_page("pages/주변감지경보.py")
 
 
-# ==========================================
-# 기능 3. 안전한 길 안내
-# ==========================================
 with col3:
     st.markdown(
         """
@@ -334,32 +229,11 @@ with col3:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stHorizontalBlock"]
-        > div:nth-child(3) div.stButton > button {
-            background-color: #70a1ff;
-            color: white;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if st.button(
-        "🗺️ 길 안내 바로가기",
-        key="btn_path",
-        use_container_width=True,
-    ):
+    if st.button("🗺️ 길 안내 바로가기", key="btn_path",
+                 use_container_width=True, type="primary"):
         safe_switch_page("pages/안전한 길 안내.py")
 
 
-# ==========================================
 # 7. 하단 안내
-# ==========================================
 st.divider()
-
-st.caption(
-    "빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다."
-)
+st.caption("빅-긴급!! (BIG-GINGEUP) © 노인분들의 안전을 지킵니다.")
