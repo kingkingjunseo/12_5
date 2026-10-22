@@ -1,343 +1,234 @@
 
 import streamlit as st
 import folium
-import openrouteservice
-from openrouteservice import convert
 from streamlit_folium import st_folium
 
 st.set_page_config(
-    page_title="안전한 길 안내",
-    page_icon="♿",
+    page_title="무장애 좌표 지도",
+    page_icon="🗺️",
     layout="wide",
 )
 
-st.markdown("""
-<style>
-.block-container {padding-top: 1rem; max-width: 1600px;}
-header {visibility: visible;}
-.hero {
-    padding: 20px;
-    border-radius: 16px;
-    background: linear-gradient(110deg, #e8f1ff, #f7fbff);
-    border: 1px solid #d6e5ff;
-    margin-bottom: 18px;
-}
-.hero h1 {color: #174581; font-size: 30px; margin: 0;}
-.hero p {color: #526b8b; margin-bottom: 0;}
-.panel-title {
-    font-size: 20px;
-    font-weight: 750;
-    color: #174581;
-    margin: 8px 0 16px 0;
-}
-.metric {
-    background: #f1f6ff;
-    border: 1px solid #dce8fa;
-    border-radius: 12px;
-    padding: 12px;
-    margin-bottom: 10px;
-}
-.metric-label {font-size: 13px; color: #647995;}
-.metric-value {font-size: 22px; font-weight: 800; color: #174581;}
-.safe {
-    background: #e9f8ef;
-    color: #087443;
-    border-radius: 10px;
-    padding: 12px;
-    margin: 10px 0;
-}
-</style>
+st.title("🗺️ 무장애 길 안내 지도")
+st.caption("지도에서 위치를 선택하고 위도·경도를 확인하세요.")
 
-<div class="hero">
-    <h1>♿ 안전한 길 안내</h1>
-    <p>장애물을 피하고, 모두가 편리한 길을 찾아드립니다.</p>
-</div>
-""", unsafe_allow_html=True)
+# 초기 데이터
+if "route_points" not in st.session_state:
+    st.session_state.route_points = []
 
-try:
-    api_key = st.secrets.get("ORS_API_KEY", "")
-except Exception:
-    api_key = ""
+if "selected_location" not in st.session_state:
+    st.session_state.selected_location = None
 
-left, center, right = st.columns([1, 1.7, 1.1], gap="medium")
+if "point_role" not in st.session_state:
+    st.session_state.point_role = "경유지"
 
-with left:
-    st.markdown('<div class="panel-title">📍 출발지 · 도착지</div>',
-                unsafe_allow_html=True)
+st.markdown(
+    """
+    **사용 방법**
+    1. 지도에서 원하는 위치를 클릭하세요.
+    2. 선택한 위치의 위도와 경도를 확인하세요.
+    3. 출발지, 도착지 또는 경유지로 추가하세요.
+    """
+)
 
-    with st.form("route_form"):
-        start = st.text_input("🟢 출발지", "서울역")
-        end = st.text_input("🔴 도착지", "서울시청")
+# 지도 중심: 서울
+points = st.session_state.route_points
 
-        st.markdown("### 🛡️ 안전 경로 설정")
-        wheelchair = st.checkbox("휠체어 이동 우선", value=True)
-        avoid_steps = st.checkbox("계단 회피 우선", value=True)
-        curb_check = st.checkbox("보도 턱 정보 확인", value=True)
-        incline_limit = st.checkbox("경사도 제한 사용", value=False)
-        max_incline = st.slider(
-            "허용 경사도(도)", 3, 15, 6,
-            disabled=not incline_limit
-        )
+if points:
+    center = [points[-1]["lat"], points[-1]["lon"]]
+else:
+    center = [37.5665, 126.9780]
 
-        submitted = st.form_submit_button(
-            "🔎 안전 경로 찾기",
-            type="primary",
-            use_container_width=True,
-        )
+map_obj = folium.Map(
+    location=center,
+    zoom_start=13,
+    control_scale=True,
+    tiles="OpenStreetMap",
+)
 
-    st.caption("지도 정보가 실제 현장과 다를 수 있으므로 이동 전 확인하세요.")
-
-with center:
-    st.markdown('<div class="panel-title">🗺️ 경로 지도</div>',
-                unsafe_allow_html=True)
-    map_area = st.empty()
-
-with right:
-    st.markdown('<div class="panel-title">🧭 경로 정보</div>',
-                unsafe_allow_html=True)
-    details = st.empty()
-
-
-def make_map(start_point=None, end_point=None, route_points=None):
-    m = folium.Map(
-        location=[37.5665, 126.9780],
-        zoom_start=13,
-        tiles="OpenStreetMap",
-        control_scale=True,
-    )
-
-    if start_point:
-        folium.Marker(
-            start_point,
-            tooltip="출발지",
-            icon=folium.Icon(color="green", icon="play"),
-        ).add_to(m)
-
-    if end_point:
-        folium.Marker(
-            end_point,
-            tooltip="도착지",
-            icon=folium.Icon(color="red", icon="flag"),
-        ).add_to(m)
-
-    if route_points:
-        folium.PolyLine(
-            route_points,
-            color="#246be8",
-            weight=6,
-            opacity=0.9,
-            tooltip="계산된 경로",
-        ).add_to(m)
-
-        m.fit_bounds(route_points, padding=(25, 25))
-
-    return m
-
-
-if "route_result" not in st.session_state:
-    with map_area:
-        st_folium(
-            make_map(),
-            use_container_width=True,
-            height=650,
-            returned_objects=[],
-            key="initial_map",
-        )
-
-    with details:
-        st.info("출발지와 도착지를 입력한 뒤 경로를 검색하세요.")
-        st.markdown("**주요 확인 항목**")
-        st.write("🟢 계단 회피")
-        st.write("🟠 보도 턱 확인")
-        st.write("🟣 공사 및 장애물 확인")
-
-if submitted:
-    if not start.strip() or not end.strip():
-        st.error("출발지와 도착지를 모두 입력해 주세요.")
-
-    elif not api_key:
-        st.error("OpenRouteService API 키를 먼저 설정해 주세요.")
-        st.code('ORS_API_KEY = "발급받은_API_키"')
-        st.markdown(
-            "[API 키 발급 사이트](https://openrouteservice.org/dev/#/signup)"
-        )
-
+# 기존 지점 표시
+for i, point in enumerate(points):
+    if point["role"] == "출발지":
+        color = "green"
+    elif point["role"] == "도착지":
+        color = "red"
     else:
-        try:
-            client = openrouteservice.Client(
-                key=api_key,
-                timeout=30,
-            )
+        color = "blue"
 
-            with st.spinner("장소 검색 및 경로 계산 중..."):
-                origin = client.pelias_search(
-                    text=start.strip(),
-                    size=1,
-                )
-                destination = client.pelias_search(
-                    text=end.strip(),
-                    size=1,
-                )
+    folium.Marker(
+        location=[point["lat"], point["lon"]],
+        tooltip=point["role"],
+        popup=(
+            f'{point["role"]}<br>'
+            f'위도: {point["lat"]:.6f}<br>'
+            f'경도: {point["lon"]:.6f}'
+        ),
+        icon=folium.Icon(color=color),
+    ).add_to(map_obj)
 
-                if not origin.get("features") or not destination.get("features"):
-                    st.error("장소를 찾지 못했습니다. 주소를 더 구체적으로 입력해 주세요.")
-                    st.stop()
+# 지점이 두 개 이상이면 연결선 표시
+if len(points) >= 2:
+    folium.PolyLine(
+        locations=[
+            [point["lat"], point["lon"]]
+            for point in points
+        ],
+        color="#16866a",
+        weight=5,
+        opacity=0.85,
+        tooltip="직접 지정한 지점 연결선",
+    ).add_to(map_obj)
 
-                sf = origin["features"][0]
-                ef = destination["features"][0]
+map_result = st_folium(
+    map_obj,
+    height=500,
+    use_container_width=True,
+    key="coordinate_map",
+)
 
-                slon, slat = sf["geometry"]["coordinates"][:2]
-                elon, elat = ef["geometry"]["coordinates"][:2]
+# 지도 클릭 좌표 저장
+if map_result and map_result.get("last_clicked"):
+    location = map_result["last_clicked"]
+    st.session_state.selected_location = {
+        "lat": float(location["lat"]),
+        "lon": float(location["lng"]),
+    }
 
-                options = {}
+st.divider()
+st.subheader("📍 선택한 좌표")
 
-                if avoid_steps and not wheelchair:
-                    options["avoid_features"] = ["steps"]
+selected = st.session_state.selected_location
 
-                if incline_limit and wheelchair:
-                    options["profile_params"] = {
-                        "restrictions": {
-                            "maximum_incline": int(max_incline)
-                        }
-                    }
+if selected:
+    lat = selected["lat"]
+    lon = selected["lon"]
 
-                profile = (
-                    "wheelchair"
-                    if wheelchair
-                    else "foot-walking"
-                )
+    col1, col2 = st.columns(2)
 
-                route = client.directions(
-                    coordinates=((slon, slat), (elon, elat)),
-                    profile=profile,
-                    format="json",
-                    instructions=True,
-                    language="ko",
-                    units="m",
-                    options=options or None,
-                )
+    with col1:
+        st.metric("위도 (Latitude)", f"{lat:.6f}")
 
-            route_data = route["routes"][0]
-            decoded = convert.decode_polyline(route_data["geometry"])
+    with col2:
+        st.metric("경도 (Longitude)", f"{lon:.6f}")
 
-            points = [
-                (lat, lon)
-                for lon, lat in decoded["coordinates"]
+    st.code(f"{lat:.6f}, {lon:.6f}", language="text")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        role = st.selectbox(
+            "이 위치의 종류",
+            ["출발지", "경유지", "도착지"],
+            key="selected_role",
+        )
+
+    with col2:
+        label = st.text_input(
+            "위치 이름 (선택)",
+            placeholder="예: 학교 정문",
+            key="selected_label",
+        )
+
+    if st.button("➕ 선택한 위치 추가", type="primary",
+                 use_container_width=True):
+        new_point = {
+            "lat": lat,
+            "lon": lon,
+            "role": role,
+            "label": label.strip() or role,
+        }
+
+        if role in ["출발지", "도착지"]:
+            # 출발지와 도착지는 각각 하나씩 유지
+            st.session_state.route_points = [
+                p for p in st.session_state.route_points
+                if p["role"] != role
             ]
 
-            summary = route_data["summary"]
+        st.session_state.route_points.append(new_point)
+        st.rerun()
+else:
+    st.info("위치를 선택하려면 위 지도를 클릭하세요.")
 
-            st.session_state["route_result"] = {
-                "start": sf.get("properties", {}).get("label", start),
-                "end": ef.get("properties", {}).get("label", end),
-                "start_point": (slat, slon),
-                "end_point": (elat, elon),
-                "points": points,
-                "distance": summary["distance"] / 1000,
-                "minutes": round(summary["duration"] / 60),
-                "segments": route_data.get("segments", []),
-                "wheelchair": wheelchair,
-                "curb_check": curb_check,
-                "avoid_steps": avoid_steps,
-            }
+# 기록 목록
+st.divider()
+st.subheader("🧭 저장한 위치 목록")
 
-        except openrouteservice.exceptions.ApiError as exc:
-            st.error("경로 API 오류입니다. API 키와 사용량을 확인해 주세요.")
-            st.code(str(exc))
+points = st.session_state.route_points
 
-        except Exception as exc:
-            st.error("경로 계산 중 문제가 발생했습니다.")
-            st.code(str(exc))
+if points:
+    for index, point in enumerate(points):
+        with st.container(border=True):
+            col1, col2 = st.columns([3, 1])
 
+            with col1:
+                st.markdown(f"**{point['role']} · {point['label']}**")
+                st.text(
+                    f"위도: {point['lat']:.6f} | "
+                    f"경도: {point['lon']:.6f}"
+                )
 
-result = st.session_state.get("route_result")
+            with col2:
+                if st.button(
+                    "삭제",
+                    key=f"delete_{index}",
+                ):
+                    st.session_state.route_points.pop(index)
+                    st.rerun()
 
-if result:
-    with center:
-        st.markdown("### 추천 경로")
-
-        st_folium(
-            make_map(
-                start_point=result["start_point"],
-                end_point=result["end_point"],
-                route_points=result["points"],
-            ),
-            use_container_width=True,
-            height=650,
-            returned_objects=[],
-            key="route_map",
+    if len(points) >= 2:
+        st.success(
+            f"{len(points)}개 지점을 지도에 표시하고 연결했어요."
         )
-
-    with right:
-        a, b = st.columns(2)
-
-        with a:
-            st.markdown(
-                f'<div class="metric">'
-                f'<div class="metric-label">총 거리</div>'
-                f'<div class="metric-value">{result["distance"]:.2f} km</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-        with b:
-            st.markdown(
-                f'<div class="metric">'
-                f'<div class="metric-label">예상 시간</div>'
-                f'<div class="metric-value">약 {result["minutes"]}분</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-        st.markdown(
-            '<div class="safe">✓ 경로 계산 완료</div>',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown("**출발지**")
-        st.write("🟢 " + result["start"])
-
-        st.markdown("**도착지**")
-        st.write("🔴 " + result["end"])
-
-        st.divider()
-        st.markdown("### 🧭 경로 안내")
-
-        count = 0
-        for segment in result["segments"]:
-            for step in segment.get("steps", []):
-                instruction = step.get("instruction", "")
-                if instruction:
-                    st.write(
-                        f"• {instruction} "
-                        f"({step.get('distance', 0):.0f}m)"
-                    )
-                    count += 1
-
-                if count >= 12:
-                    break
-
-            if count >= 12:
-                break
-
-        if count == 0:
-            st.write("세부 안내 정보가 없습니다.")
-
-        st.divider()
-        st.markdown("### ⚠️ 안전 확인")
-
-        if result["avoid_steps"]:
-            st.write("✓ 계단 회피 옵션 요청")
-
-        if result["wheelchair"]:
-            st.write("✓ 휠체어 경로 프로필 사용")
-
-        if result["curb_check"]:
-            st.warning(
-                "보도 턱 정보가 모든 구간에 제공되는 것은 아닙니다."
-            )
-
         st.caption(
-            "실제 공사, 보도 턱, 엘리베이터 고장 등은 "
-            "완전히 반영되지 않을 수 있습니다. 현장 상황을 확인하세요."
+            "연결선은 직접 지정한 지점을 직선으로 이은 것입니다. "
+            "실제 도로를 따라가는 경로가 아닙니다."
         )
+
+    coordinate_text = "\n".join(
+        f"{p['label']}: 위도 {p['lat']:.6f}, "
+        f"경도 {p['lon']:.6f}"
+        for p in points
+    )
+
+    st.download_button(
+        "📥 좌표 목록 다운로드",
+        data=coordinate_text,
+        file_name="coordinates.txt",
+        mime="text/plain",
+        use_container_width=True,
+    )
+else:
+    st.caption("아직 저장한 위치가 없어요.")
+
+# 무장애 체크리스트
+st.divider()
+st.subheader("♿ 무장애 이동 점검")
+
+check_items = [
+    "보도에 턱이나 단차가 없는지 확인",
+    "이용 가능한 경사로가 있는지 확인",
+    "계단을 피할 수 있는지 확인",
+    "보행로 폭과 장애물 확인",
+    "횡단보도와 보행 신호 확인",
+    "공사 및 통행 제한 여부 확인",
+]
+
+checked_items = []
+
+for item in check_items:
+    if st.checkbox(item, key=f"access_{item}"):
+        checked_items.append(item)
+
+st.progress(len(checked_items) / len(check_items))
+st.write(f"확인 완료: {len(checked_items)} / {len(check_items)}개")
+
+st.warning(
+    "이 앱은 선택한 좌표와 지점 간 직선을 표시합니다. "
+    "실제 도로 경로, 턱, 계단, 경사, 공사 여부를 자동 확인하지 않습니다. "
+    "현장 정보를 별도로 확인해 주세요."
+)
+
+st.caption(
+    "지도 배경: OpenStreetMap · 위치 좌표: 지도 클릭으로 선택"
+)
