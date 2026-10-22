@@ -1,169 +1,343 @@
 
 import streamlit as st
+import folium
+import openrouteservice
+from openrouteservice import convert
+from streamlit_folium import st_folium
 
 st.set_page_config(
-    page_title="무장애 길 안내",
+    page_title="안전한 길 안내",
     page_icon="♿",
     layout="wide",
 )
 
-st.markdown(
-    """
-    <style>
-    .block-container {
-        max-width: 1100px;
-        padding-top: 2rem;
-    }
-    div[data-testid="stMetric"] {
-        background: #f0f7f4;
-        border: 1px solid #d8e9e1;
-        border-radius: 12px;
-        padding: 15px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown("""
+<style>
+.block-container {padding-top: 1rem; max-width: 1600px;}
+header {visibility: visible;}
+.hero {
+    padding: 20px;
+    border-radius: 16px;
+    background: linear-gradient(110deg, #e8f1ff, #f7fbff);
+    border: 1px solid #d6e5ff;
+    margin-bottom: 18px;
+}
+.hero h1 {color: #174581; font-size: 30px; margin: 0;}
+.hero p {color: #526b8b; margin-bottom: 0;}
+.panel-title {
+    font-size: 20px;
+    font-weight: 750;
+    color: #174581;
+    margin: 8px 0 16px 0;
+}
+.metric {
+    background: #f1f6ff;
+    border: 1px solid #dce8fa;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+.metric-label {font-size: 13px; color: #647995;}
+.metric-value {font-size: 22px; font-weight: 800; color: #174581;}
+.safe {
+    background: #e9f8ef;
+    color: #087443;
+    border-radius: 10px;
+    padding: 12px;
+    margin: 10px 0;
+}
+</style>
 
-st.title("♿ 무장애 길 안내")
-st.write("이동할 장소를 기록하고, 이동 경로의 접근성 정보를 확인해 보세요.")
+<div class="hero">
+    <h1>♿ 안전한 길 안내</h1>
+    <p>장애물을 피하고, 모두가 편리한 길을 찾아드립니다.</p>
+</div>
+""", unsafe_allow_html=True)
 
-# 세션 상태 초기화
-if "route_saved" not in st.session_state:
-    st.session_state.route_saved = False
+try:
+    api_key = st.secrets.get("ORS_API_KEY", "")
+except Exception:
+    api_key = ""
 
-if "checks" not in st.session_state:
-    st.session_state.checks = {}
+left, center, right = st.columns([1, 1.7, 1.1], gap="medium")
 
-# 장소 입력
-st.subheader("📍 이동 정보")
+with left:
+    st.markdown('<div class="panel-title">📍 출발지 · 도착지</div>',
+                unsafe_allow_html=True)
 
-with st.form("route_form"):
-    col1, col2 = st.columns(2)
+    with st.form("route_form"):
+        start = st.text_input("🟢 출발지", "서울역")
+        end = st.text_input("🔴 도착지", "서울시청")
 
-    with col1:
-        start = st.text_input(
-            "출발지",
-            placeholder="예: 학교 정문",
+        st.markdown("### 🛡️ 안전 경로 설정")
+        wheelchair = st.checkbox("휠체어 이동 우선", value=True)
+        avoid_steps = st.checkbox("계단 회피 우선", value=True)
+        curb_check = st.checkbox("보도 턱 정보 확인", value=True)
+        incline_limit = st.checkbox("경사도 제한 사용", value=False)
+        max_incline = st.slider(
+            "허용 경사도(도)", 3, 15, 6,
+            disabled=not incline_limit
         )
 
-    with col2:
-        destination = st.text_input(
-            "도착지",
-            placeholder="예: 도서관 입구",
+        submitted = st.form_submit_button(
+            "🔎 안전 경로 찾기",
+            type="primary",
+            use_container_width=True,
         )
 
-    route_notes = st.text_area(
-        "경로 설명",
-        placeholder="예: 정문에서 오른쪽으로 이동한 뒤 경사로를 이용합니다.",
-        height=100,
+    st.caption("지도 정보가 실제 현장과 다를 수 있으므로 이동 전 확인하세요.")
+
+with center:
+    st.markdown('<div class="panel-title">🗺️ 경로 지도</div>',
+                unsafe_allow_html=True)
+    map_area = st.empty()
+
+with right:
+    st.markdown('<div class="panel-title">🧭 경로 정보</div>',
+                unsafe_allow_html=True)
+    details = st.empty()
+
+
+def make_map(start_point=None, end_point=None, route_points=None):
+    m = folium.Map(
+        location=[37.5665, 126.9780],
+        zoom_start=13,
+        tiles="OpenStreetMap",
+        control_scale=True,
     )
 
-    submitted = st.form_submit_button(
-        "이동 정보 저장",
-        type="primary",
-        use_container_width=True,
-    )
+    if start_point:
+        folium.Marker(
+            start_point,
+            tooltip="출발지",
+            icon=folium.Icon(color="green", icon="play"),
+        ).add_to(m)
+
+    if end_point:
+        folium.Marker(
+            end_point,
+            tooltip="도착지",
+            icon=folium.Icon(color="red", icon="flag"),
+        ).add_to(m)
+
+    if route_points:
+        folium.PolyLine(
+            route_points,
+            color="#246be8",
+            weight=6,
+            opacity=0.9,
+            tooltip="계산된 경로",
+        ).add_to(m)
+
+        m.fit_bounds(route_points, padding=(25, 25))
+
+    return m
+
+
+if "route_result" not in st.session_state:
+    with map_area:
+        st_folium(
+            make_map(),
+            use_container_width=True,
+            height=650,
+            returned_objects=[],
+            key="initial_map",
+        )
+
+    with details:
+        st.info("출발지와 도착지를 입력한 뒤 경로를 검색하세요.")
+        st.markdown("**주요 확인 항목**")
+        st.write("🟢 계단 회피")
+        st.write("🟠 보도 턱 확인")
+        st.write("🟣 공사 및 장애물 확인")
 
 if submitted:
-    if not start.strip() or not destination.strip():
-        st.warning("출발지와 도착지를 모두 입력해 주세요.")
-    elif start.strip() == destination.strip():
-        st.warning("출발지와 도착지를 다르게 입력해 주세요.")
-    else:
-        st.session_state.start = start.strip()
-        st.session_state.destination = destination.strip()
-        st.session_state.route_notes = route_notes.strip()
-        st.session_state.route_saved = True
-        st.session_state.checks = {}
-        st.success("이동 정보를 저장했어요.")
+    if not start.strip() or not end.strip():
+        st.error("출발지와 도착지를 모두 입력해 주세요.")
 
-# 이동 정보 표시
-if st.session_state.route_saved:
-    st.divider()
-    st.subheader("🧭 나의 이동 경로")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("출발지", st.session_state.start)
-    with col2:
-        st.metric("도착지", st.session_state.destination)
-
-    if st.session_state.route_notes:
-        st.info(st.session_state.route_notes)
-
-    st.caption(
-        "이 화면은 사용자가 입력한 경로 설명을 표시합니다. "
-        "실제 지도 경로를 자동으로 계산하지는 않습니다."
-    )
-
-# 접근성 체크리스트
-st.divider()
-st.subheader("✅ 무장애 환경 체크리스트")
-st.write("이동 전에 각 항목을 확인하고 체크하세요.")
-
-items = [
-    ("턱", "이동 경로에 높은 턱이나 단차가 없는지"),
-    ("경사로", "경사로가 있고 안전하게 이용할 수 있는지"),
-    ("계단", "계단을 피할 수 있는 대체 경로가 있는지"),
-    ("보도", "보행로가 충분히 넓고 장애물이 없는지"),
-    ("엘리베이터", "필요한 엘리베이터가 이용 가능한지"),
-    ("횡단보도", "횡단보도와 보행 신호를 이용할 수 있는지"),
-    ("공사", "공사나 임시 통행 제한이 있는지"),
-    ("바닥", "바닥이 미끄럽거나 파손된 곳이 없는지"),
-]
-
-for key, description in items:
-    st.session_state.checks.setdefault(key, False)
-
-    st.session_state.checks[key] = st.checkbox(
-        f"**{key}** — {description}",
-        value=st.session_state.checks[key],
-        key=f"check_{key}",
-    )
-
-checked = sum(st.session_state.checks.values())
-total = len(items)
-
-st.progress(checked / total)
-st.write(f"확인 완료: **{checked}/{total}개**")
-
-if checked == total:
-    st.success("모든 항목을 확인했어요. 출발 전 현장 상황도 확인해 주세요.")
-elif checked >= 5:
-    st.info("대부분 확인했어요. 남은 항목도 확인해 보세요.")
-else:
-    st.caption("체크리스트는 실제 현장 점검을 대신하지 않습니다.")
-
-# 사용자 경로 메모
-st.divider()
-st.subheader("📝 추가 메모")
-
-extra_notes = st.text_area(
-    "추가로 기록할 내용",
-    placeholder="예: 정문 오른쪽에 경사로가 있음",
-    key="extra_notes",
-)
-
-if st.button("메모 확인"):
-    if extra_notes.strip():
-        st.text_area(
-            "작성한 메모",
-            value=extra_notes,
-            height=100,
-            disabled=True,
+    elif not api_key:
+        st.error("OpenRouteService API 키를 먼저 설정해 주세요.")
+        st.code('ORS_API_KEY = "발급받은_API_키"')
+        st.markdown(
+            "[API 키 발급 사이트](https://openrouteservice.org/dev/#/signup)"
         )
+
     else:
-        st.warning("먼저 메모를 입력해 주세요.")
+        try:
+            client = openrouteservice.Client(
+                key=api_key,
+                timeout=30,
+            )
 
-# 초기화
-st.divider()
+            with st.spinner("장소 검색 및 경로 계산 중..."):
+                origin = client.pelias_search(
+                    text=start.strip(),
+                    size=1,
+                )
+                destination = client.pelias_search(
+                    text=end.strip(),
+                    size=1,
+                )
 
-if st.button("전체 기록 초기화"):
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.rerun()
+                if not origin.get("features") or not destination.get("features"):
+                    st.error("장소를 찾지 못했습니다. 주소를 더 구체적으로 입력해 주세요.")
+                    st.stop()
 
-st.caption(
-    "무장애 길 안내 도우미 · 외부 API 없이 동작하는 기록 및 점검 앱"
-)
+                sf = origin["features"][0]
+                ef = destination["features"][0]
+
+                slon, slat = sf["geometry"]["coordinates"][:2]
+                elon, elat = ef["geometry"]["coordinates"][:2]
+
+                options = {}
+
+                if avoid_steps and not wheelchair:
+                    options["avoid_features"] = ["steps"]
+
+                if incline_limit and wheelchair:
+                    options["profile_params"] = {
+                        "restrictions": {
+                            "maximum_incline": int(max_incline)
+                        }
+                    }
+
+                profile = (
+                    "wheelchair"
+                    if wheelchair
+                    else "foot-walking"
+                )
+
+                route = client.directions(
+                    coordinates=((slon, slat), (elon, elat)),
+                    profile=profile,
+                    format="json",
+                    instructions=True,
+                    language="ko",
+                    units="m",
+                    options=options or None,
+                )
+
+            route_data = route["routes"][0]
+            decoded = convert.decode_polyline(route_data["geometry"])
+
+            points = [
+                (lat, lon)
+                for lon, lat in decoded["coordinates"]
+            ]
+
+            summary = route_data["summary"]
+
+            st.session_state["route_result"] = {
+                "start": sf.get("properties", {}).get("label", start),
+                "end": ef.get("properties", {}).get("label", end),
+                "start_point": (slat, slon),
+                "end_point": (elat, elon),
+                "points": points,
+                "distance": summary["distance"] / 1000,
+                "minutes": round(summary["duration"] / 60),
+                "segments": route_data.get("segments", []),
+                "wheelchair": wheelchair,
+                "curb_check": curb_check,
+                "avoid_steps": avoid_steps,
+            }
+
+        except openrouteservice.exceptions.ApiError as exc:
+            st.error("경로 API 오류입니다. API 키와 사용량을 확인해 주세요.")
+            st.code(str(exc))
+
+        except Exception as exc:
+            st.error("경로 계산 중 문제가 발생했습니다.")
+            st.code(str(exc))
+
+
+result = st.session_state.get("route_result")
+
+if result:
+    with center:
+        st.markdown("### 추천 경로")
+
+        st_folium(
+            make_map(
+                start_point=result["start_point"],
+                end_point=result["end_point"],
+                route_points=result["points"],
+            ),
+            use_container_width=True,
+            height=650,
+            returned_objects=[],
+            key="route_map",
+        )
+
+    with right:
+        a, b = st.columns(2)
+
+        with a:
+            st.markdown(
+                f'<div class="metric">'
+                f'<div class="metric-label">총 거리</div>'
+                f'<div class="metric-value">{result["distance"]:.2f} km</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        with b:
+            st.markdown(
+                f'<div class="metric">'
+                f'<div class="metric-label">예상 시간</div>'
+                f'<div class="metric-value">약 {result["minutes"]}분</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown(
+            '<div class="safe">✓ 경로 계산 완료</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("**출발지**")
+        st.write("🟢 " + result["start"])
+
+        st.markdown("**도착지**")
+        st.write("🔴 " + result["end"])
+
+        st.divider()
+        st.markdown("### 🧭 경로 안내")
+
+        count = 0
+        for segment in result["segments"]:
+            for step in segment.get("steps", []):
+                instruction = step.get("instruction", "")
+                if instruction:
+                    st.write(
+                        f"• {instruction} "
+                        f"({step.get('distance', 0):.0f}m)"
+                    )
+                    count += 1
+
+                if count >= 12:
+                    break
+
+            if count >= 12:
+                break
+
+        if count == 0:
+            st.write("세부 안내 정보가 없습니다.")
+
+        st.divider()
+        st.markdown("### ⚠️ 안전 확인")
+
+        if result["avoid_steps"]:
+            st.write("✓ 계단 회피 옵션 요청")
+
+        if result["wheelchair"]:
+            st.write("✓ 휠체어 경로 프로필 사용")
+
+        if result["curb_check"]:
+            st.warning(
+                "보도 턱 정보가 모든 구간에 제공되는 것은 아닙니다."
+            )
+
+        st.caption(
+            "실제 공사, 보도 턱, 엘리베이터 고장 등은 "
+            "완전히 반영되지 않을 수 있습니다. 현장 상황을 확인하세요."
+        )
