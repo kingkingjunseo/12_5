@@ -356,3 +356,106 @@ else:
                 "서버 상태를 확인한 뒤 다시 시도해 주세요."
             )
             st.caption(f"오류 내용: {e}")
+
+import osmnx as ox
+import networkx as nx
+import folium
+import streamlit as st
+from streamlit_folium import st_folium
+
+st.subheader("🚶 도로를 따라가는 경로")
+
+start = st.session_state.get("safe_start")
+end = st.session_state.get("safe_end")
+
+if start is None or end is None:
+    st.warning("출발지와 도착지를 먼저 선택해 주세요.")
+
+elif st.button("🗺️ 실제 도로 경로 찾기"):
+    try:
+        with st.spinner("도로를 분석하고 있어요..."):
+            # 출발지와 도착지 사이의 중간점
+            mid_lat = (start["lat"] + end["lat"]) / 2
+            mid_lon = (start["lon"] + end["lon"]) / 2
+
+            # OpenStreetMap에서 보행 가능한 도로망 가져오기
+            G = ox.graph_from_point(
+                (mid_lat, mid_lon),
+                dist=5000,
+                network_type="walk",
+                simplify=True,
+            )
+
+            # 출발지와 도착지에 가장 가까운 도로 지점
+            start_node = ox.distance.nearest_nodes(
+                G, X=start["lon"], Y=start["lat"]
+            )
+            end_node = ox.distance.nearest_nodes(
+                G, X=end["lon"], Y=end["lat"]
+            )
+
+            # 실제 도로를 따라 최단 경로 계산
+            route = nx.shortest_path(
+                G,
+                start_node,
+                end_node,
+                weight="length",
+            )
+
+            # 도로의 구불구불한 좌표를 모두 추출
+            route_points = [
+                (G.nodes[node]["y"], G.nodes[node]["x"])
+                for node in route
+            ]
+
+            # 지도 만들기
+            route_map = folium.Map(
+                location=route_points[0],
+                zoom_start=16,
+                tiles="OpenStreetMap",
+            )
+
+            # 실제 도로 모양대로 경로 그리기
+            folium.PolyLine(
+                route_points,
+                color="blue",
+                weight=7,
+                opacity=0.85,
+                tooltip="도로를 따라가는 경로",
+            ).add_to(route_map)
+
+            folium.Marker(
+                [start["lat"], start["lon"]],
+                tooltip="출발지",
+                icon=folium.Icon(color="green"),
+            ).add_to(route_map)
+
+            folium.Marker(
+                [end["lat"], end["lon"]],
+                tooltip="도착지",
+                icon=folium.Icon(color="red"),
+            ).add_to(route_map)
+
+            # 경로에 맞게 지도 화면 조정
+            route_map.fit_bounds(route_points)
+
+            st_folium(
+                route_map,
+                use_container_width=True,
+                height=500,
+                key="actual_road_route",
+            )
+
+            # 도로 길이 계산
+            distance = sum(
+                min(data.get("length", float("inf"))
+                    for data in G[u][v].values())
+                for u, v in zip(route[:-1], route[1:])
+            )
+
+            st.success(f"도로 경로를 찾았어요! 총 거리: {distance:.0f}m")
+
+    except (nx.NetworkXNoPath, nx.NodeNotFound):
+        st.error("두 위치를 연결하는 도로 경로를 찾지 못했어요.")
+    except Exception as e:
+        st.error(f"경로 계산에 실패했어요: {e}")
