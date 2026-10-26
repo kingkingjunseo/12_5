@@ -220,24 +220,6 @@ st.caption(
     "지도 배경: OpenStreetMap · 위치 좌표: 지도 클릭으로 선택"
 )
 
-# 실제 도로를 따라 보행 경로 계산
-import osmnx as ox
-import networkx as nx
-import folium
-import streamlit as st
-from streamlit_folium import st_folium
-
-st.subheader("🚶 실제 도로 경로 찾기")
-
-start = st.session_state.get("safe_start")
-end = st.session_state.get("safe_end")
-
-
-    except (nx.NetworkXNoPath, nx.NodeNotFound):
-        st.error("두 위치를 연결하는 도로 경로를 찾지 못했어요.")
-    except Exception as e:
-        st.error(f"경로 계산에 실패했어요: {e}")
-
 # 실제 도로를 따라가는 보행 경로
 import osmnx as ox
 import networkx as nx
