@@ -8,3 +8,8 @@ folium>=0.15.0
 streamlit-folium>=0.20.0
 streamlit-geolocation
 av
+
+streamlit
+requests
+folium
+streamlit-folium
