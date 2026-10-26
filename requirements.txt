@@ -17,3 +17,8 @@ osmnx
 networkx
 folium
 streamlit-folium
+
+streamlit
+requests
+folium
+streamlit-folium
