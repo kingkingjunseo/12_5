@@ -1,24 +1,19 @@
 
 import json
 import math
-import time
-
 import folium
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_folium import st_folium
 
-# -----------------------------
-# 기본 설정
-# -----------------------------
 st.set_page_config(
     page_title="안전 동행",
     page_icon="🚶",
     layout="wide",
 )
 
-# 지도 시연용 기준 위치. 화면에는 좌표나 장소 이름을 표시하지 않음.
+# 고정된 지도 기준 좌표
 LAT = 36.84152810
 LON = 127.14213325
 
@@ -27,33 +22,35 @@ OVERPASS_SERVERS = [
     "https://overpass.private.coffee/api/interpreter",
 ]
 
-ALERT_DISTANCE = 60  # 위험 지점 60m 이내 접근 시 경보
+ALERT_DISTANCE = 60
 
 
-# -----------------------------
-# 위험 정보 가져오기
-# -----------------------------
 @st.cache_data(ttl=300, show_spinner=False)
 def get_hazards(lat, lon, radius):
     query = f"""
-    [out:json][timeout:12];
+    [out:json][timeout:15];
     (
       nwr(around:{radius},{lat},{lon})["highway"="construction"];
       nwr(around:{radius},{lat},{lon})["construction"];
+      nwr(around:{radius},{lat},{lon})["landuse"="construction"];
+      nwr(around:{radius},{lat},{lon})["building"="construction"];
       nwr(around:{radius},{lat},{lon})["barrier"="construction"];
+
       nwr(around:{radius},{lat},{lon})["highway"="steps"];
       nwr(around:{radius},{lat},{lon})["natural"="cliff"];
       nwr(around:{radius},{lat},{lon})["barrier"="cliff"];
+
       nwr(around:{radius},{lat},{lon})["hazard"];
       way(around:{radius},{lat},{lon})["incline"];
+
       way(around:{radius},{lat},{lon})
-        ["highway"~"path|track"]
+        ["surface"~"gravel|mud|sand|ground|cobblestone"];
+
+      way(around:{radius},{lat},{lon})
         ["smoothness"~"bad|very_bad|horrible|impassable"];
     );
     out center tags;
     """
-
-    errors = []
 
     for server in OVERPASS_SERVERS:
         try:
@@ -61,7 +58,7 @@ def get_hazards(lat, lon, radius):
                 server,
                 data={"data": query},
                 headers={"User-Agent": "SafetyCompanion/1.0"},
-                timeout=(3, 12),
+                timeout=(3, 15),
             )
             response.raise_for_status()
             data = response.json()
@@ -81,11 +78,20 @@ def get_hazards(lat, lon, radius):
                 if point_lat is None or point_lon is None:
                     continue
 
-                if tags.get("highway") == "construction" or "construction" in tags:
+                if (
+                    tags.get("highway") == "construction"
+                    or "construction" in tags
+                    or tags.get("landuse") == "construction"
+                    or tags.get("building") == "construction"
+                    or tags.get("barrier") == "construction"
+                ):
                     kind = "공사 구간"
                 elif tags.get("highway") == "steps":
                     kind = "계단"
-                elif tags.get("natural") == "cliff" or tags.get("barrier") == "cliff":
+                elif (
+                    tags.get("natural") == "cliff"
+                    or tags.get("barrier") == "cliff"
+                ):
                     kind = "절벽"
                 elif "hazard" in tags:
                     kind = "위험 구간"
@@ -95,6 +101,10 @@ def get_hazards(lat, lon, radius):
                     "bad", "very_bad", "horrible", "impassable"
                 ):
                     kind = "노면 주의"
+                elif tags.get("surface") in (
+                    "gravel", "mud", "sand", "ground", "cobblestone"
+                ):
+                    kind = "노면 확인 필요"
                 else:
                     kind = "주의 구간"
 
@@ -107,32 +117,12 @@ def get_hazards(lat, lon, radius):
 
             return hazards, None
 
-        except (requests.RequestException, ValueError) as error:
-            errors.append(str(error))
+        except (requests.RequestException, ValueError):
+            continue
 
     return [], "위험 정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요."
 
 
-# -----------------------------
-# 거리 계산
-# -----------------------------
-def distance_m(lat1, lon1, lat2, lon2):
-    earth_radius = 6371000
-    p1 = math.radians(lat1)
-    p2 = math.radians(lat2)
-    dp = math.radians(lat2 - lat1)
-    dl = math.radians(lon2 - lon1)
-
-    a = (
-        math.sin(dp / 2) ** 2
-        + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    )
-    return earth_radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-
-# -----------------------------
-# 화면 디자인
-# -----------------------------
 st.markdown("""
 <style>
 .stApp {
@@ -164,7 +154,7 @@ with st.sidebar:
         "주변 검색 범위",
         min_value=200,
         max_value=1500,
-        value=800,
+        value=1000,
         step=100,
         format="%d m",
     )
@@ -173,16 +163,12 @@ with st.sidebar:
         get_hazards.clear()
         st.rerun()
 
-# 위치를 다시 찾는 절차 없이 고정 기준점으로 지도를 즉시 준비
-with st.spinner("주변 위험 정보를 확인하고 있습니다..."):
+with st.spinner("지도 준비 중..."):
     hazards, error = get_hazards(LAT, LON, radius)
 
 if error:
     st.warning(error)
 
-# -----------------------------
-# 지도 표시
-# -----------------------------
 map_obj = folium.Map(
     location=[LAT, LON],
     zoom_start=16,
@@ -219,23 +205,19 @@ if hazards:
             st.write(f'🔴 {hazard["kind"]}')
 else:
     st.info(
-        "검색 범위에서 등록된 위험 정보를 찾지 못했습니다. "
-        "위험이 없다는 뜻은 아닙니다."
+        "등록된 위험 정보를 찾지 못했습니다. "
+        "위험이 없다는 의미는 아닙니다."
     )
 
-# -----------------------------
-# 브라우저에서 실제 위치를 확인하고 자동 경보
-# -----------------------------
-# 이 코드는 지도에 표시된 위험 지점의 좌표를 브라우저에 전달합니다.
-# 브라우저의 위치 권한이 허용되어야 실제 접근 여부를 확인할 수 있습니다.
+# 실제 위치를 감시하고 위험 지점에 접근하면 자동 경보
 hazards_json = json.dumps(hazards, ensure_ascii=False)
 
 alarm_html = """
 <div style="font-family:sans-serif;background:#fff4e5;
 padding:12px;border-radius:12px;color:#34483D;">
-  <strong id="alarm-status">📍 자동 위치 확인을 시작합니다.</strong>
+  <strong id="alarm-status">📍 자동 위치 확인 중</strong>
   <div id="alarm-detail" style="font-size:13px;margin-top:5px;">
-    브라우저의 위치 권한을 허용해 주세요.
+    위치 권한을 허용해 주세요.
   </div>
 </div>
 
@@ -252,34 +234,31 @@ let audioContext = null;
 function playAlarm() {
     try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) {
-            statusEl.textContent = "⚠️ 이 브라우저에서는 경고음을 지원하지 않습니다.";
-            return;
-        }
+        if (!AudioCtx) return;
 
         if (!audioContext) audioContext = new AudioCtx();
 
-        if (audioContext.state === "suspended") {
-            audioContext.resume().catch(() => {});
-        }
-
         if (audioContext.state !== "running") {
             statusEl.textContent =
-                "⚠️ 브라우저에서 소리 재생이 차단되었습니다. 소리 권한을 확인해 주세요.";
+                "⚠️ 소리 재생이 차단되었습니다. 화면을 한 번 눌러 주세요.";
             return;
         }
 
         const now = audioContext.currentTime;
 
-        [0, 0.32, 0.64].forEach((offset) => {
+        [0, 0.32, 0.64].forEach(offset => {
             const oscillator = audioContext.createOscillator();
             const gain = audioContext.createGain();
 
             oscillator.type = "sine";
             oscillator.frequency.value = 880;
             gain.gain.setValueAtTime(0.0001, now + offset);
-            gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.03);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.20);
+            gain.gain.exponentialRampToValueAtTime(
+                0.25, now + offset + 0.03
+            );
+            gain.gain.exponentialRampToValueAtTime(
+                0.0001, now + offset + 0.20
+            );
 
             oscillator.connect(gain);
             gain.connect(audioContext.destination);
@@ -287,9 +266,21 @@ function playAlarm() {
             oscillator.stop(now + offset + 0.22);
         });
     } catch (e) {
-        statusEl.textContent = "⚠️ 경고음을 재생할 수 없습니다.";
+        statusEl.textContent = "경고음을 재생할 수 없습니다.";
     }
 }
+
+// 사용자가 화면을 한 번 누르면 브라우저의 소리 재생을 준비
+document.addEventListener("pointerdown", function activateAudio() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        if (!audioContext) audioContext = new AudioCtx();
+        if (audioContext.state === "suspended") {
+            audioContext.resume().catch(() => {});
+        }
+    } catch (e) {}
+}, {once: true});
 
 function distanceMeters(lat1, lon1, lat2, lon2) {
     const R = 6371000;
@@ -307,7 +298,6 @@ function onPosition(position) {
     const lon = position.coords.longitude;
 
     statusEl.textContent = "🟢 자동 경보 작동 중";
-    detailEl.textContent = "주변 위험 지점과의 거리를 확인하고 있습니다.";
 
     let nearest = null;
     let nearestDistance = Infinity;
@@ -316,7 +306,6 @@ function onPosition(position) {
         const distance = distanceMeters(
             lat, lon, hazard.lat, hazard.lon
         );
-
         if (distance < nearestDistance) {
             nearestDistance = distance;
             nearest = hazard;
@@ -324,37 +313,41 @@ function onPosition(position) {
     }
 
     if (nearest && nearestDistance <= alertDistance) {
-        const now = Date.now();
         detailEl.textContent =
-            "위험 지점 접근: " + nearest.kind
-            + " · 약 " + Math.round(nearestDistance) + "m";
+            "⚠️ " + nearest.kind + " · 약 "
+            + Math.round(nearestDistance) + "m";
 
-        // 같은 위험 지점에서 15초마다 반복 경보
-        if (lastAlertId !== nearest.id || now - lastAlertTime > 15000) {
+        const now = Date.now();
+        if (
+            lastAlertId !== nearest.id
+            || now - lastAlertTime > 15000
+        ) {
             playAlarm();
             lastAlertId = nearest.id;
             lastAlertTime = now;
         }
+
         statusEl.textContent = "🔴 위험 지점에 가까이 접근했습니다!";
     } else {
-        // 위험 지점에서 충분히 멀어지면 다음 접근 경보를 허용
+        if (!nearest) {
+            detailEl.textContent = "확인할 위험 정보가 없습니다.";
+        } else {
+            detailEl.textContent =
+                "가장 가까운 등록 위험 지점까지 약 "
+                + Math.round(nearestDistance) + "m";
+        }
+
         if (nearestDistance > alertDistance + 40) {
             lastAlertId = null;
         }
-        detailEl.textContent = nearest
-            ? "가장 가까운 등록 위험 지점까지 약 "
-                + Math.round(nearestDistance) + "m"
-            : "현재 검색된 위험 지점이 없습니다.";
     }
 }
 
 function onLocationError(error) {
     statusEl.textContent = "📍 위치 정보를 확인할 수 없습니다.";
-    if (error.code === 1) {
-        detailEl.textContent = "브라우저 설정에서 위치 권한을 허용해 주세요.";
-    } else {
-        detailEl.textContent = "위치 신호가 약하거나 사용할 수 없습니다.";
-    }
+    detailEl.textContent = error.code === 1
+        ? "브라우저 설정에서 위치 권한을 허용해 주세요."
+        : "위치 신호가 약하거나 사용할 수 없습니다.";
 }
 
 if ("geolocation" in navigator) {
@@ -362,9 +355,9 @@ if ("geolocation" in navigator) {
         onPosition,
         onLocationError,
         {
-            enableHighAccuracy: true,
+            enableHighAccuracy: false,
             maximumAge: 3000,
-            timeout: 10000
+            timeout: 8000
         }
     );
 } else {
@@ -382,6 +375,6 @@ alarm_html = (
 components.html(alarm_html, height=100, scrolling=False)
 
 st.caption(
-    "지도 자료는 OpenStreetMap 기반이며, 등록되지 않은 위험이나 "
-    "위치 오차가 있을 수 있습니다."
+    "지도 정보는 OpenStreetMap 기반이며, "
+    "등록되지 않은 위험이나 위치 오차가 있을 수 있습니다."
 )
