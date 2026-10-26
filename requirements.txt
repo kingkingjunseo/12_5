@@ -13,3 +13,7 @@ streamlit
 requests
 folium
 streamlit-folium
+osmnx
+networkx
+folium
+streamlit-folium
